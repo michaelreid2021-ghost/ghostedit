@@ -1,0 +1,275 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE fcpxml>
+<fcpxml version="1.10">
+    <resources>
+        <format height="1080" name="FFVideoFormat1080p2398" id="r0" width="1920" frameDuration="1001/24000s"/>
+        <media name="Final_1_Are you looking for" id="r3">
+            <multicam tcStart="1281793513/24000s" tcFormat="NDF" format="r0">
+                <mc-angle name="Angle 1" angleID="31074519-d29b-4698-aac6-0c6a44d85000">
+                    <asset-clip start="1281793513/24000s" name="Michael Frizell CAM 1 01_HD.mov" duration="77077/8000s" enabled="1" offset="0/1s" ref="r1" tcFormat="NDF" format="r0">
+                        <adjust-conform type="fit"/>
+                        <adjust-transform scale="1 1" position="0 0" anchor="0 0"/>
+                    </asset-clip>
+                </mc-angle>
+                <mc-angle name="Angle 2" angleID="cae6132e-4161-4617-8a57-d28aed81a12c">
+                    <asset-clip start="1281793513/24000s" name="Michael Frizell CAM 2 01_HD.mov" duration="77077/8000s" enabled="1" offset="0/1s" ref="r2" tcFormat="NDF" format="r0">
+                        <adjust-conform type="fit"/>
+                        <adjust-transform scale="1 1" position="0 0" anchor="0 0"/>
+                    </asset-clip>
+                </mc-angle>
+            </multicam>
+        </media>
+        <media name="Final_3_Now before you tell" id="r9">
+            <multicam tcStart="1286263979/24000s" tcFormat="NDF" format="r0">
+                <mc-angle name="Angle 1" angleID="752b0e06-59b2-44cb-b9a3-0a13dac09415">
+                    <asset-clip start="1286263979/24000s" name="Michael Frizell CAM 1 01_HD.mov" duration="33033/800s" enabled="1" offset="0/1s" ref="r7" tcFormat="NDF" format="r0">
+                        <adjust-conform type="fit"/>
+                        <adjust-transform scale="1 1" position="0 0" anchor="0 0"/>
+                    </asset-clip>
+                </mc-angle>
+                <mc-angle name="Angle 2" angleID="ea833250-05ac-41f1-ae61-856795840405">
+                    <asset-clip start="1286263979/24000s" name="Michael Frizell CAM 2 01_HD.mov" duration="33033/800s" enabled="1" offset="0/1s" ref="r8" tcFormat="NDF" format="r0">
+                        <adjust-conform type="fit"/>
+                        <adjust-transform scale="1 1" position="0 0" anchor="0 0"/>
+                    </asset-clip>
+                </mc-angle>
+            </multicam>
+        </media>
+        <media name="Final_2_Im your host Micha" id="r6">
+            <multicam tcStart="2143141/40s" tcFormat="NDF" format="r0">
+                <mc-angle name="Angle 1" angleID="36250e2e-2be1-46b5-b5d2-549948515f3b">
+                    <asset-clip start="2143141/40s" name="Michael Frizell CAM 1 01_HD.mov" duration="123123/8000s" enabled="1" offset="0/1s" ref="r4" tcFormat="NDF" format="r0">
+                        <adjust-conform type="fit"/>
+                        <adjust-transform scale="1 1" position="0 0" anchor="0 0"/>
+                    </asset-clip>
+                </mc-angle>
+                <mc-angle name="Angle 2" angleID="72f4121b-4c69-4973-8b47-343ad8645b0e">
+                    <asset-clip start="2143141/40s" name="Michael Frizell CAM 2 01_HD.mov" duration="123123/8000s" enabled="1" offset="0/1s" ref="r5" tcFormat="NDF" format="r0">
+                        <adjust-conform type="fit"/>
+                        <adjust-transform scale="1 1" position="0 0" anchor="0 0"/>
+                    </asset-clip>
+                </mc-angle>
+            </multicam>
+        </media>
+        <media name="Final_5_Now the second one w" id="r15">
+            <multicam tcStart="1290189901/24000s" tcFormat="NDF" format="r0">
+                <mc-angle name="Angle 2" angleID="33258e3f-5b1c-40ed-8b31-dbd5f141d174">
+                    <asset-clip start="1290189901/24000s" name="Michael Frizell CAM 2 01_HD.mov" duration="433433/12000s" enabled="1" offset="0/1s" ref="r13" tcFormat="NDF" format="r0">
+                        <adjust-conform type="fit"/>
+                        <adjust-transform scale="1 1" position="0 0" anchor="0 0"/>
+                    </asset-clip>
+                </mc-angle>
+                <mc-angle name="Angle 1" angleID="5be7569a-854d-400d-b4a6-f869c9abc995">
+                    <asset-clip start="1290189901/24000s" name="Michael Frizell CAM 1 01_HD.mov" duration="433433/12000s" enabled="1" offset="0/1s" ref="r14" tcFormat="NDF" format="r0">
+                        <adjust-conform type="fit"/>
+                        <adjust-transform scale="1 1" position="0 0" anchor="0 0"/>
+                    </asset-clip>
+                </mc-angle>
+            </multicam>
+        </media>
+        <media name="Final_6_Universities are the" id="r18">
+            <multicam tcStart="43035993/800s" tcFormat="NDF" format="r0">
+                <mc-angle name="Angle 2" angleID="c092445c-7d42-4bca-95e2-30ccf731ffbc">
+                    <asset-clip start="43035993/800s" name="Michael Frizell CAM 2 01_HD.mov" duration="1962961/12000s" enabled="1" offset="0/1s" ref="r16" tcFormat="NDF" format="r0">
+                        <adjust-conform type="fit"/>
+                        <adjust-transform scale="1 1" position="0 0" anchor="0 0"/>
+                    </asset-clip>
+                </mc-angle>
+                <mc-angle name="Angle 1" angleID="dd71d477-d7b8-4f4b-9905-8e99c6cb1e94">
+                    <asset-clip start="43035993/800s" name="Michael Frizell CAM 1 01_HD.mov" duration="1962961/12000s" enabled="1" offset="0/1s" ref="r17" tcFormat="NDF" format="r0">
+                        <adjust-conform type="fit"/>
+                        <adjust-transform scale="1 1" position="0 0" anchor="0 0"/>
+                    </asset-clip>
+                </mc-angle>
+            </multicam>
+        </media>
+        <media name="Final_4_Todays focus is on" id="r12">
+            <multicam tcStart="1287315029/24000s" tcFormat="NDF" format="r0">
+                <mc-angle name="Angle 2" angleID="12162b82-2298-4a5b-b530-ff332252cee5">
+                    <asset-clip start="1287315029/24000s" name="Michael Frizell CAM 2 01_HD.mov" duration="1428427/12000s" enabled="1" offset="0/1s" ref="r10" tcFormat="NDF" format="r0">
+                        <adjust-conform type="fit"/>
+                        <adjust-transform scale="1 1" position="0 0" anchor="0 0"/>
+                    </asset-clip>
+                </mc-angle>
+                <mc-angle name="Angle 1" angleID="3981cd4f-f843-4f1e-b257-ba97798a117b">
+                    <asset-clip start="1287315029/24000s" name="Michael Frizell CAM 1 01_HD.mov" duration="1428427/12000s" enabled="1" offset="0/1s" ref="r11" tcFormat="NDF" format="r0">
+                        <adjust-conform type="fit"/>
+                        <adjust-transform scale="1 1" position="0 0" anchor="0 0"/>
+                    </asset-clip>
+                </mc-angle>
+            </multicam>
+        </media>
+        <media name="Final_7_Lets pause for a mo" id="r21">
+            <multicam tcStart="647694047/12000s" tcFormat="NDF" format="r0">
+                <mc-angle name="Angle 2" angleID="047762bf-0e78-4a74-b943-b217da99c0db">
+                    <asset-clip start="647694047/12000s" name="Michael Frizell CAM 2 01_HD.mov" duration="71071/3000s" enabled="1" offset="0/1s" ref="r19" tcFormat="NDF" format="r0">
+                        <adjust-conform type="fit"/>
+                        <adjust-transform scale="1 1" position="0 0" anchor="0 0"/>
+                    </asset-clip>
+                </mc-angle>
+                <mc-angle name="Angle 1" angleID="2bd965cb-63af-4b5d-b11a-2563a970686c">
+                    <asset-clip start="647694047/12000s" name="Michael Frizell CAM 1 01_HD.mov" duration="71071/3000s" enabled="1" offset="0/1s" ref="r20" tcFormat="NDF" format="r0">
+                        <adjust-conform type="fit"/>
+                        <adjust-transform scale="1 1" position="0 0" anchor="0 0"/>
+                    </asset-clip>
+                </mc-angle>
+            </multicam>
+        </media>
+        <media name="Final_9_So lets wrap things" id="r27">
+            <multicam tcStart="1298334037/24000s" tcFormat="NDF" format="r0">
+                <mc-angle name="Angle 1" angleID="8faa5f53-44ce-45cc-a92e-094de3eb2a99">
+                    <asset-clip start="1298334037/24000s" name="Michael Frizell CAM 1 01_HD.mov" duration="811811/12000s" enabled="1" offset="0/1s" ref="r25" tcFormat="NDF" format="r0">
+                        <adjust-conform type="fit"/>
+                        <adjust-transform scale="1 1" position="0 0" anchor="0 0"/>
+                    </asset-clip>
+                </mc-angle>
+                <mc-angle name="Angle 2" angleID="b1c58713-4349-490f-9de4-22c7118e2bd5">
+                    <asset-clip start="1298334037/24000s" name="Michael Frizell CAM 2 01_HD.mov" duration="811811/12000s" enabled="1" offset="0/1s" ref="r26" tcFormat="NDF" format="r0">
+                        <adjust-conform type="fit"/>
+                        <adjust-transform scale="1 1" position="0 0" anchor="0 0"/>
+                    </asset-clip>
+                </mc-angle>
+            </multicam>
+        </media>
+        <media name="Final_8_Right now the feder" id="r24">
+            <multicam tcStart="648078431/12000s" tcFormat="NDF" format="r0">
+                <mc-angle name="Angle 2" angleID="32db3093-638f-45c9-9d3e-7a484f35c4bd">
+                    <asset-clip start="648078431/12000s" name="Michael Frizell CAM 2 01_HD.mov" duration="1082081/12000s" enabled="1" offset="0/1s" ref="r22" tcFormat="NDF" format="r0">
+                        <adjust-conform type="fit"/>
+                        <adjust-transform scale="1 1" position="0 0" anchor="0 0"/>
+                    </asset-clip>
+                </mc-angle>
+                <mc-angle name="Angle 1" angleID="4a610552-8a3f-4725-b2cf-e6c16176b6ac">
+                    <asset-clip start="648078431/12000s" name="Michael Frizell CAM 1 01_HD.mov" duration="1082081/12000s" enabled="1" offset="0/1s" ref="r23" tcFormat="NDF" format="r0">
+                        <adjust-conform type="fit"/>
+                        <adjust-transform scale="1 1" position="0 0" anchor="0 0"/>
+                    </asset-clip>
+                </mc-angle>
+            </multicam>
+        </media>
+        <asset start="1281050771/24000s" name="Michael Frizell CAM 1 01_HD.mov" audioChannels="2" duration="401401/500s" hasAudio="1" id="r1" hasVideo="1" audioSources="1" format="r0">
+            <media-rep kind="original-media" src="file://localhost/E:/davinci/projects/Michael%20Frizell_081225_for%20AI%20Edit/Michael%20Frizell%20CAM%201%2001_HD.mov"/>
+        </asset>
+        <asset start="1281050771/24000s" name="Michael Frizell CAM 2 01_HD.mov" audioChannels="2" duration="401401/500s" hasAudio="1" id="r2" hasVideo="1" audioSources="1" format="r0">
+            <media-rep kind="original-media" src="file://localhost/E:/davinci/projects/Michael%20Frizell_081225_for%20AI%20Edit/Michael%20Frizell%20CAM%202%2001_HD.mov"/>
+        </asset>
+        <asset start="1281050771/24000s" name="Michael Frizell CAM 1 01_HD.mov" audioChannels="2" duration="401401/500s" hasAudio="1" id="r4" hasVideo="1" audioSources="1" format="r0">
+            <media-rep kind="original-media" src="file://localhost/E:/davinci/projects/Michael%20Frizell_081225_for%20AI%20Edit/Michael%20Frizell%20CAM%201%2001_HD.mov"/>
+        </asset>
+        <asset start="1281050771/24000s" name="Michael Frizell CAM 2 01_HD.mov" audioChannels="2" duration="401401/500s" hasAudio="1" id="r5" hasVideo="1" audioSources="1" format="r0">
+            <media-rep kind="original-media" src="file://localhost/E:/davinci/projects/Michael%20Frizell_081225_for%20AI%20Edit/Michael%20Frizell%20CAM%202%2001_HD.mov"/>
+        </asset>
+        <asset start="1281050771/24000s" name="Michael Frizell CAM 1 01_HD.mov" audioChannels="2" duration="401401/500s" hasAudio="1" id="r7" hasVideo="1" audioSources="1" format="r0">
+            <media-rep kind="original-media" src="file://localhost/E:/davinci/projects/Michael%20Frizell_081225_for%20AI%20Edit/Michael%20Frizell%20CAM%201%2001_HD.mov"/>
+        </asset>
+        <asset start="1281050771/24000s" name="Michael Frizell CAM 2 01_HD.mov" audioChannels="2" duration="401401/500s" hasAudio="1" id="r8" hasVideo="1" audioSources="1" format="r0">
+            <media-rep kind="original-media" src="file://localhost/E:/davinci/projects/Michael%20Frizell_081225_for%20AI%20Edit/Michael%20Frizell%20CAM%202%2001_HD.mov"/>
+        </asset>
+        <asset start="1281050771/24000s" name="Michael Frizell CAM 2 01_HD.mov" audioChannels="2" duration="401401/500s" hasAudio="1" id="r10" hasVideo="1" audioSources="1" format="r0">
+            <media-rep kind="original-media" src="file://localhost/E:/davinci/projects/Michael%20Frizell_081225_for%20AI%20Edit/Michael%20Frizell%20CAM%202%2001_HD.mov"/>
+        </asset>
+        <asset start="1281050771/24000s" name="Michael Frizell CAM 1 01_HD.mov" audioChannels="2" duration="401401/500s" hasAudio="1" id="r11" hasVideo="1" audioSources="1" format="r0">
+            <media-rep kind="original-media" src="file://localhost/E:/davinci/projects/Michael%20Frizell_081225_for%20AI%20Edit/Michael%20Frizell%20CAM%201%2001_HD.mov"/>
+        </asset>
+        <asset start="1281050771/24000s" name="Michael Frizell CAM 2 01_HD.mov" audioChannels="2" duration="401401/500s" hasAudio="1" id="r13" hasVideo="1" audioSources="1" format="r0">
+            <media-rep kind="original-media" src="file://localhost/E:/davinci/projects/Michael%20Frizell_081225_for%20AI%20Edit/Michael%20Frizell%20CAM%202%2001_HD.mov"/>
+        </asset>
+        <asset start="1281050771/24000s" name="Michael Frizell CAM 1 01_HD.mov" audioChannels="2" duration="401401/500s" hasAudio="1" id="r14" hasVideo="1" audioSources="1" format="r0">
+            <media-rep kind="original-media" src="file://localhost/E:/davinci/projects/Michael%20Frizell_081225_for%20AI%20Edit/Michael%20Frizell%20CAM%201%2001_HD.mov"/>
+        </asset>
+        <asset start="1281050771/24000s" name="Michael Frizell CAM 2 01_HD.mov" audioChannels="2" duration="401401/500s" hasAudio="1" id="r16" hasVideo="1" audioSources="1" format="r0">
+            <media-rep kind="original-media" src="file://localhost/E:/davinci/projects/Michael%20Frizell_081225_for%20AI%20Edit/Michael%20Frizell%20CAM%202%2001_HD.mov"/>
+        </asset>
+        <asset start="1281050771/24000s" name="Michael Frizell CAM 1 01_HD.mov" audioChannels="2" duration="401401/500s" hasAudio="1" id="r17" hasVideo="1" audioSources="1" format="r0">
+            <media-rep kind="original-media" src="file://localhost/E:/davinci/projects/Michael%20Frizell_081225_for%20AI%20Edit/Michael%20Frizell%20CAM%201%2001_HD.mov"/>
+        </asset>
+        <asset start="1281050771/24000s" name="Michael Frizell CAM 2 01_HD.mov" audioChannels="2" duration="401401/500s" hasAudio="1" id="r19" hasVideo="1" audioSources="1" format="r0">
+            <media-rep kind="original-media" src="file://localhost/E:/davinci/projects/Michael%20Frizell_081225_for%20AI%20Edit/Michael%20Frizell%20CAM%202%2001_HD.mov"/>
+        </asset>
+        <asset start="1281050771/24000s" name="Michael Frizell CAM 1 01_HD.mov" audioChannels="2" duration="401401/500s" hasAudio="1" id="r20" hasVideo="1" audioSources="1" format="r0">
+            <media-rep kind="original-media" src="file://localhost/E:/davinci/projects/Michael%20Frizell_081225_for%20AI%20Edit/Michael%20Frizell%20CAM%201%2001_HD.mov"/>
+        </asset>
+        <asset start="1281050771/24000s" name="Michael Frizell CAM 2 01_HD.mov" audioChannels="2" duration="401401/500s" hasAudio="1" id="r22" hasVideo="1" audioSources="1" format="r0">
+            <media-rep kind="original-media" src="file://localhost/E:/davinci/projects/Michael%20Frizell_081225_for%20AI%20Edit/Michael%20Frizell%20CAM%202%2001_HD.mov"/>
+        </asset>
+        <asset start="1281050771/24000s" name="Michael Frizell CAM 1 01_HD.mov" audioChannels="2" duration="401401/500s" hasAudio="1" id="r23" hasVideo="1" audioSources="1" format="r0">
+            <media-rep kind="original-media" src="file://localhost/E:/davinci/projects/Michael%20Frizell_081225_for%20AI%20Edit/Michael%20Frizell%20CAM%201%2001_HD.mov"/>
+        </asset>
+        <asset start="1281050771/24000s" name="Michael Frizell CAM 1 01_HD.mov" audioChannels="2" duration="401401/500s" hasAudio="1" id="r25" hasVideo="1" audioSources="1" format="r0">
+            <media-rep kind="original-media" src="file://localhost/E:/davinci/projects/Michael%20Frizell_081225_for%20AI%20Edit/Michael%20Frizell%20CAM%201%2001_HD.mov"/>
+        </asset>
+        <asset start="1281050771/24000s" name="Michael Frizell CAM 2 01_HD.mov" audioChannels="2" duration="401401/500s" hasAudio="1" id="r26" hasVideo="1" audioSources="1" format="r0">
+            <media-rep kind="original-media" src="file://localhost/E:/davinci/projects/Michael%20Frizell_081225_for%20AI%20Edit/Michael%20Frizell%20CAM%202%2001_HD.mov"/>
+        </asset>
+    </resources>
+    <library>
+        <event name="Timeline 1 (Resolve) (Resolve)">
+            <project name="Timeline 1 (Resolve) (Resolve)">
+                <sequence duration="283283/500s" tcStart="18018/5s" tcFormat="NDF" format="r0">
+                    <spine>
+                        <mc-clip start="1281793513/24000s" name="Final_1_Are you looking for" duration="77077/8000s" offset="18018/5s" ref="r3">
+                            <mc-source srcEnable="all" angleID="cae6132e-4161-4617-8a57-d28aed81a12c">
+                                <adjust-conform type="fit"/>
+                                <adjust-transform scale="1 1" position="0 0" anchor="0 0"/>
+                            </mc-source>
+                        </mc-clip>
+                        <mc-clip start="2143141/40s" name="Final_2_Im your host Micha" duration="123123/8000s" offset="28905877/8000s" ref="r6">
+                            <mc-source srcEnable="all" angleID="72f4121b-4c69-4973-8b47-343ad8645b0e">
+                                <adjust-conform type="fit"/>
+                                <adjust-transform scale="1 1" position="0 0" anchor="0 0"/>
+                            </mc-source>
+                        </mc-clip>
+                        <mc-clip start="1286263979/24000s" name="Final_3_Now before you tell" duration="33033/800s" offset="29029/8s" ref="r9">
+                            <mc-source srcEnable="all" angleID="ea833250-05ac-41f1-ae61-856795840405">
+                                <adjust-conform type="fit"/>
+                                <adjust-transform scale="1 1" position="0 0" anchor="0 0"/>
+                            </mc-source>
+                        </mc-clip>
+                        <mc-clip start="1287315029/24000s" name="Final_4_Todays focus is on" duration="137137/4000s" offset="2935933/800s" ref="r12">
+                            <mc-source srcEnable="all" angleID="12162b82-2298-4a5b-b530-ff332252cee5">
+                                <adjust-conform type="fit"/>
+                                <adjust-transform scale="1 1" position="0 0" anchor="0 0"/>
+                            </mc-source>
+                        </mc-clip>
+                        <mc-clip start="1288137851/24000s" name="Final_4_Todays focus is on" duration="127127/1500s" offset="7408401/2000s" ref="r12">
+                            <mc-source srcEnable="all" angleID="12162b82-2298-4a5b-b530-ff332252cee5">
+                                <adjust-conform type="fit"/>
+                                <adjust-transform scale="1 1" position="0 0" anchor="0 0"/>
+                            </mc-source>
+                        </mc-clip>
+                        <mc-clip start="1290189901/24000s" name="Final_5_Now the second one w" duration="433433/12000s" offset="22733711/6000s" ref="r15">
+                            <mc-source srcEnable="all" angleID="33258e3f-5b1c-40ed-8b31-dbd5f141d174">
+                                <adjust-conform type="fit"/>
+                                <adjust-transform scale="1 1" position="0 0" anchor="0 0"/>
+                            </mc-source>
+                        </mc-clip>
+                        <mc-clip start="43035993/800s" name="Final_6_Universities are the" duration="1962961/12000s" offset="3060057/800s" ref="r18">
+                            <mc-source srcEnable="all" angleID="c092445c-7d42-4bca-95e2-30ccf731ffbc">
+                                <adjust-conform type="fit"/>
+                                <adjust-transform scale="1 1" position="0 0" anchor="0 0"/>
+                            </mc-source>
+                        </mc-clip>
+                        <mc-clip start="647694047/12000s" name="Final_7_Lets pause for a mo" duration="71071/3000s" offset="5982977/1500s" ref="r21">
+                            <mc-source srcEnable="all" angleID="047762bf-0e78-4a74-b943-b217da99c0db">
+                                <adjust-conform type="fit"/>
+                                <adjust-transform scale="1 1" position="0 0" anchor="0 0"/>
+                            </mc-source>
+                        </mc-clip>
+                        <mc-clip start="648078431/12000s" name="Final_8_Right now the feder" duration="1082081/12000s" offset="481481/120s" ref="r24">
+                            <mc-source srcEnable="all" angleID="32db3093-638f-45c9-9d3e-7a484f35c4bd">
+                                <adjust-conform type="fit"/>
+                                <adjust-transform scale="1 1" position="0 0" anchor="0 0"/>
+                            </mc-source>
+                        </mc-clip>
+                        <mc-clip start="1298334037/24000s" name="Final_9_So lets wrap things" duration="811811/12000s" offset="49230181/12000s" ref="r27">
+                            <mc-source srcEnable="all" angleID="b1c58713-4349-490f-9de4-22c7118e2bd5">
+                                <adjust-conform type="fit"/>
+                                <adjust-transform scale="1 1" position="0 0" anchor="0 0"/>
+                            </mc-source>
+                        </mc-clip>
+                    </spine>
+                </sequence>
+            </project>
+        </event>
+    </library>
+</fcpxml>
