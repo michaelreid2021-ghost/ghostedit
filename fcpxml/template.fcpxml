@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE fcpxml>
+<fcpxml version="1.10">
+    <resources>
+        <format id="r0" name="FFVideoFormat1080p2398" width="1920" height="1080" frameDuration="1001/24000s"/>
+    </resources>
+    <library>
+        <event name="Default Event">
+            <project name="Default Project">
+                <sequence duration="0s" tcStart="0s" tcFormat="NDF" format="r0">
+                    <spine>
+                        <!-- New clips will be added here -->
+                    </spine>
+                </sequence>
+            </project>
+        </event>
+    </library>
+</fcpxml>

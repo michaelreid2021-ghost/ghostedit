@@ -5,8 +5,8 @@
 # - Mirrors 116’s structure and logging.
 
 # --- Configuration ---
-$basePath = "E:\davinci\projects\"
-$projectsFolder = "E:\ai_editing_assistant\fcpxml\projects\"
+$basePath = "E:\ghostedit\assembly_line\projects\"
+$projectsFolder = "E:\ghostedit\fcpxml\pipeline\projects\"
 $activeProjectFile = Join-Path $projectsFolder "active_project.txt"
 $pythonScriptPath = ".\117_insert_broll_asset_clip.py"
 
@@ -77,7 +77,7 @@ if ($null -eq $placeholderData -or $placeholderData.Count -eq 0) {
     exit 0
 }
 # --- Main Processing Loop ---
-$brollAssetsDir = Join-Path $projectRoot "ai_working_files\47_generated_b_roll"
+$brollAssetsDir = Join-Path $projectRoot "ai_working_files\59_generated_b_roll"
 $baseName = [System.IO.Path]::GetFileNameWithoutExtension($latestBrollPlan.Name).Replace("_broll_plan", "")
 
 for ($i = 0; $i -lt $placeholderData.Count; $i++) {

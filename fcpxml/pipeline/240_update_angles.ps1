@@ -3,8 +3,8 @@
 # Purpose: Apply AI pacing plan cuts into info.fcpxml (single-take, SRT-based workflow)
 
 # --- Configuration ---
-$basePath        = "e:\davinci\projects\"
-$projectsFolder  = "E:\ai_editing_assistant\fcpxml\projects\"
+$basePath = "E:\ghostedit\assembly_line\projects\"
+$projectsFolder = "E:\ghostedit\fcpxml\pipeline\projects\"
 $activeProjectFile = Join-Path $projectsFolder "active_project.txt"
 
 # --- Resolve active project ---

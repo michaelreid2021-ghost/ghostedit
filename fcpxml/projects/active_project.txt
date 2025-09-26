@@ -1,1 +1,1 @@
-first_project
+first_pipeline

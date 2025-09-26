@@ -48,7 +48,7 @@ def float_to_time_literal(seconds: float, denom: int = 24000) -> str:
 def timebase_from_sequence(resources_root: ET.Element, seq_elem: ET.Element) -> Tuple[int, int]:
     """
     Return (tb_num, tb_den) where 1 frame = tb_den/tb_num seconds.
-    For 23.976, frameDuration="1001/24000s" → tb_num=24000, tb_den=1001.
+    For 23.976, frameDuration="1001/24000s" -> tb_num=24000, tb_den=1001.
     """
     fmt_id = seq_elem.get('format')
     if not fmt_id:
@@ -320,7 +320,7 @@ def insert_broll_asset_clip(fcpxml_path: str,
             raise RuntimeError("Computed start is at/after mc-clip end after base-offset mapping.")
         effective_duration_s = min(duration_sec, remaining_s)
 
-        # delta from mc offset in timeline domain → add to mc TC start for TC-domain offset literal
+        # delta from mc offset in timeline domain -> add to mc TC start for TC-domain offset literal
         delta_s = abs_start_sec - mc_off_s
         asset_tc_offset_s = mc_tc_start_s + delta_s
 
@@ -363,7 +363,7 @@ def insert_broll_asset_clip(fcpxml_path: str,
     # Log
     where = f"inside mc-clip '{target_mc.get('name')}'" if target_mc is not None else "on spine"
     print(f"-> Inserting b-roll: {mov_path.name}")
-    print(f"   base={base_sec:.3f}s, start={start_sec:.3f}s → abs={abs_start_sec:.3f}s, duration={duration_sec:.3f}s")
+    print(f"   base={base_sec:.3f}s, start={start_sec:.3f}s -> abs={abs_start_sec:.3f}s, duration={duration_sec:.3f}s")
     print(f"   Placement: {where}")
     print(f"   Output: {out_path}")
 

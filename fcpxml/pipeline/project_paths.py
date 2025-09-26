@@ -168,6 +168,21 @@ def add_base_arg(parser):
         help="Optional subdirectory under base for all generated files (e.g., ai_working_files).",
     )
     return parser
+def get_projects_root() -> str:
+    """
+    Finds the root directory that contains all projects.
+    It does this by loading the active project and getting its parent directory.
+    e.g., if active project base is 'E:/davinci/projects/my_project', this returns
+    'E:/davinci/projects'.
+    """
+    cfg = load_active_project_config()
+    if not cfg or "base_project_directory" not in cfg:
+        # Fallback if no config is found
+        return str(Path.cwd())
+        
+    active_project_path = Path(cfg["base_project_directory"])
+    # The "projects root" is the parent of any individual project's base directory
+    return str(active_project_path.parent)
 
 
 def from_args(args) -> ProjectPaths:

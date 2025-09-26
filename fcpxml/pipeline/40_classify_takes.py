@@ -15,7 +15,8 @@ import os
 import re
 import warnings
 from pathlib import Path
-from project_paths import add_base_arg, from_args
+from project_paths import add_base_arg, from_args, get_active_project_name
+from token_logger import log_token_usage
 
 # --- Imports and GeminiClient Class ---
 from google import genai
@@ -53,7 +54,7 @@ class GeminiClient:
             response = self.client.models.generate_content(
                 model=f"{self.model}", contents=contents, config=config
             )
-            return json.loads(response.text)
+            return response
         except Exception as e:
             print(f" [!] Gemini API Error: {e}")
             return None
@@ -195,58 +196,91 @@ def build_response_schema() -> dict:
 
 # --- MAIN ORCHESTRATION for Paper Edit Generation ---
 def main(cfg):
-    print("[+] Starting AI Paper Edit Generation Pass (High Outline)...")
-    gemini_client = GeminiClient(
-        project_id=cfg.project_id, location=cfg.location, model_name=cfg.model
-    )
-    print(f"input file: {cfg.input_file}")
-    if not os.path.exists(cfg.input_file):
-        print(f"[!] ERROR: Input file not found: {cfg.input_file}")
+    p = from_args(cfg)
+    script_name = Path(__file__).stem
+    success_flag = p.workspace / f"{script_name}.success"
+    fail_flag = p.workspace / f"{script_name}.fail"
+
+    if success_flag.exists():
+        print(f"[+] Script {script_name} has already run successfully. Skipping.")
         return
 
-    with open(cfg.input_file, "r", encoding="utf-8") as f:
-        scenes = json.load(f)
+    if fail_flag.exists():
+        print(f"[i] Retrying script {script_name} after previous failure.")
+        fail_flag.unlink()
 
-    # 1) Consolidate transcripts, using 'proxy_filename' to determine take_number.
-    transcripts_by_take: dict[str, str] = {}
-    for scene in scenes:
-        proxy_filename = scene.get("proxy_filename", "") or ""
-        if "CAM 1" in proxy_filename:  # Only need one camera's transcript
-            take_number = parse_take_from_filename(proxy_filename)
-            transcript_text = scene.get("transcript") or ""
-            if take_number and transcript_text:
-                transcripts_by_take[take_number] = transcript_text
+    try:
+        print("[+] Starting AI Paper Edit Generation Pass (High Outline)...")
+        gemini_client = GeminiClient(
+            project_id=cfg.project_id, location=cfg.location, model_name=cfg.model
+        )
+        print(f"input file: {cfg.input_file}")
+        if not os.path.exists(cfg.input_file):
+            print(f"[!] ERROR: Input file not found: {cfg.input_file}")
+            raise FileNotFoundError(f"Input file not found: {cfg.input_file}")
 
-    # 2) Build prompts
-    system_prompt = build_system_prompt()
-    consolidated_prompt = build_user_prompt_header()
-    for take_number, transcript in sorted(transcripts_by_take.items(), key=lambda kv: kv[0]):
-        consolidated_prompt += f"--- TAKE {take_number} TRANSCRIPT ---\n{transcript}\n\n"
+        with open(cfg.input_file, "r", encoding="utf-8") as f:
+            scenes = json.load(f)
 
-    # 3) Define output schema (extended)
-    paper_edit_schema = build_response_schema()
+        # 1) Consolidate transcripts, using 'proxy_filename' to determine take_number.
+        transcripts_by_take: dict[str, str] = {}
+        for scene in scenes:
+            proxy_filename = scene.get("proxy_filename", "") or ""
+            if "CAM 1" in proxy_filename:  # Only need one camera's transcript
+                take_number = parse_take_from_filename(proxy_filename)
+                transcript_text = scene.get("transcript") or ""
+                if take_number and transcript_text:
+                    transcripts_by_take[take_number] = transcript_text
 
-    print("[i] Sending all transcripts to AI for high-level analysis...")
+        # 2) Build prompts
+        system_prompt = build_system_prompt()
+        consolidated_prompt = build_user_prompt_header()
+        for take_number, transcript in sorted(transcripts_by_take.items(), key=lambda kv: kv[0]):
+            consolidated_prompt += f"--- TAKE {take_number} TRANSCRIPT ---\n{transcript}\n\n"
 
-    # 4) Make the single API call
-    paper_edit_json = gemini_client.query(
-        system_instruction=system_prompt,
-        user_prompt=consolidated_prompt,
-        response_schema=paper_edit_schema
-    )
+        # 3) Define output schema (extended)
+        paper_edit_schema = build_response_schema()
 
-    # 5) Save the output
-    if paper_edit_json:
-        out_path = getattr(cfg, "out_file", None)
-        if not out_path:
-            out_path = str((from_args(cfg).working_root / "40_high_level_plan.json"))
-        Path(out_path).parent.mkdir(parents=True, exist_ok=True)
-        with open(out_path, "w", encoding="utf-8") as f:
-            json.dump(paper_edit_json, f, indent=2, ensure_ascii=False)
-        print(f"\n[+] Success! High-level plan saved to: {out_path}")
-        print(json.dumps(paper_edit_json, indent=2, ensure_ascii=False))
-    else:
-        print("\n[!] Failed to generate a paper edit from the model.")
+        print("[i] Sending all transcripts to AI for high-level analysis...")
+
+        # 4) Make the single API call
+        response = gemini_client.query(
+            system_instruction=system_prompt,
+            user_prompt=consolidated_prompt,
+            response_schema=paper_edit_schema
+        )
+
+        # 5) Save the output
+        if response and response.text:
+            paper_edit_json = json.loads(response.text)
+            if response.usage_metadata:
+                log_token_usage(
+                    project_name=get_active_project_name(),
+                    script_name=Path(__file__).name,
+                    model_name=cfg.model,
+                    prompt_token_count=response.usage_metadata.prompt_token_count,
+                    candidates_token_count=response.usage_metadata.candidates_token_count,
+                    total_token_count=response.usage_metadata.total_token_count
+                )
+
+            out_path = getattr(cfg, "out_file", None)
+            if not out_path:
+                out_path = str((p.working_root / "40_high_level_plan.json"))
+            Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+            with open(out_path, "w", encoding="utf-8") as f:
+                json.dump(paper_edit_json, f, indent=2, ensure_ascii=False)
+            print(f"\n[+] Success! High-level plan saved to: {out_path}")
+            print(json.dumps(paper_edit_json, indent=2, ensure_ascii=False))
+            success_flag.touch()
+        else:
+            print("\n[!] Failed to generate a paper edit from the model.")
+            raise Exception("Failed to generate paper edit from model")
+
+    except Exception as e:
+        print(f"[!] An error occurred: {e}")
+        fail_flag.touch()
+        raise
+
 
 
 if __name__ == "__main__":

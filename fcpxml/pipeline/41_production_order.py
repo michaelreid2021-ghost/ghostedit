@@ -23,7 +23,8 @@ import re
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 
-from project_paths import add_base_arg, from_args
+from project_paths import add_base_arg, from_args, get_active_project_name
+from token_logger import log_token_usage
 
 # =========================
 # SRT parsing
@@ -80,7 +81,7 @@ class GeminiClient:
             types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="OFF"),
         ]
 
-    def infer_segments(self, transcript_text: str, max_segments: int, prompt_log_path: Path) -> Optional[Dict[str, Any]]:
+    def infer_segments(self, transcript_text: str, max_segments: int, prompt_log_path: Path) -> Optional[types.GenerateContentResponse]:
         system_instruction = (
             "You classify a clean-take talking-head transcript into production segments. "
             "Return JSON only. Choose segment_type from this set: "
@@ -140,15 +141,7 @@ class GeminiClient:
         )
         try:
             resp = self.client.models.generate_content(model=self.model_name, contents=contents, config=cfg)
-            if not getattr(resp, "text", None):
-                return None
-            data = json.loads(resp.text)
-            if not isinstance(data, dict) or "segments" not in data:
-                return None
-            # hard cap before consolidation
-            if isinstance(data.get("segments"), list) and len(data["segments"]) > max_segments:
-                data["segments"] = data["segments"][:max_segments]
-            return data
+            return resp
         except Exception:
             return None
 
@@ -321,73 +314,105 @@ def main():
     args = parser.parse_args()
 
     p = from_args(args)
-    working_root = Path(p.working_root)
-    print(f"[+] Active project base: {p.base}")
-    print(f"[+] Working root:       {working_root}")
+    script_name = Path(__file__).stem
+    success_flag = p.workspace / f"{script_name}.success"
+    fail_flag = p.workspace / f"{script_name}.fail"
 
-    srt_path = working_root / "subtitle 1.srt"
-    print(f"[+] Using subtitles at: {srt_path}")
-    captions = parse_srt(srt_path)
-    print(f"[+] Loaded {len(captions)} caption items.")
+    if success_flag.exists():
+        print(f"[+] Script {script_name} has already run successfully. Skipping.")
+        return
 
-    # Build transcript text (each caption on its own line to preserve anchorability)
-    transcript_text = "\n".join([c["text"] for c in captions])
+    if fail_flag.exists():
+        print(f"[i] Retrying script {script_name} after previous failure.")
+        fail_flag.unlink()
 
-    # Log paths
-    prompt_log_path = working_root / "41_ai_segmentation_prompt.txt"
-    raw_json_path = working_root / "41_ai_segmentation_raw.json"
-    consolidated_preview_path = working_root / "41_ai_segmentation_consolidated.json"
-
-    segments_ai: List[Dict[str, Any]] = []
-    used_ai = False
-
-    # Attempt AI segmentation with full logging
     try:
-        client = GeminiClient(args.project_id, args.location, args.model)
-        ai_resp = client.infer_segments(transcript_text, args.max_segments, prompt_log_path)
-        if ai_resp and isinstance(ai_resp.get("segments"), list) and ai_resp["segments"]:
-            raw_json_path.write_text(json.dumps(ai_resp, indent=2), encoding="utf-8")
-            segments_ai = ai_resp["segments"]
-            used_ai = True
-        else:
-            raw_json_path.write_text(json.dumps({"error": "no_segments_or_empty_response"}, indent=2), encoding="utf-8")
-    except Exception as e:
-        prompt_log_path.write_text("AI client unavailable or error occurred.\n", encoding="utf-8")
-        raw_json_path.write_text(json.dumps({"error": f"{e.__class__.__name__}: {e}"}, indent=2), encoding="utf-8")
+        working_root = Path(p.working_root)
+        print(f"[+] Active project base: {p.base}")
+        print(f"[+] Working root:       {working_root}")
+
+        srt_path = working_root / "subtitle 1.srt"
+        print(f"[+] Using subtitles at: {srt_path}")
+        captions = parse_srt(srt_path)
+        print(f"[+] Loaded {len(captions)} caption items.")
+
+        # Build transcript text (each caption on its own line to preserve anchorability)
+        transcript_text = "\n".join([c["text"] for c in captions])
+
+        # Log paths
+        prompt_log_path = working_root / "41_ai_segmentation_prompt.txt"
+        raw_json_path = working_root / "41_ai_segmentation_raw.json"
+        consolidated_preview_path = working_root / "41_ai_segmentation_consolidated.json"
+
+        segments_ai: List[Dict[str, Any]] = []
         used_ai = False
 
-    # Fallback if AI failed completely
-    if not segments_ai:
-        # naive 3-part seed
-        if captions:
-            segments_ai = [
-                {"segment_type": "Introduction", "entry_point_phrase": captions[0]["text"]},
-                {"segment_type": "How-To/Lesson", "entry_point_phrase": captions[len(captions)//2]["text"]},
-                {"segment_type": "Call to Action", "entry_point_phrase": captions[-1]["text"]},
+        # Attempt AI segmentation with full logging
+        try:
+            client = GeminiClient(args.project_id, args.location, args.model)
+            ai_resp = client.infer_segments(transcript_text, args.max_segments, prompt_log_path)
+            if ai_resp and ai_resp.text:
+                if ai_resp.usage_metadata:
+                    log_token_usage(
+                        project_name=get_active_project_name(),
+                        script_name=Path(__file__).name,
+                        model_name=args.model,
+                        prompt_token_count=ai_resp.usage_metadata.prompt_token_count,
+                        candidates_token_count=ai_resp.usage_metadata.candidates_token_count,
+                        total_token_count=ai_resp.usage_metadata.total_token_count
+                    )
+                ai_json = json.loads(ai_resp.text)
+                raw_json_path.write_text(json.dumps(ai_json, indent=2), encoding="utf-8")
+                if isinstance(ai_json.get("segments"), list) and ai_json["segments"]:
+                    segments_ai = ai_json["segments"]
+                    used_ai = True
+                else:
+                    raw_json_path.write_text(json.dumps({"error": "no_segments_or_empty_response"}, indent=2), encoding="utf-8")
+            else:
+                raw_json_path.write_text(json.dumps({"error": "no_segments_or_empty_response"}, indent=2), encoding="utf-8")
+        except Exception as e:
+            prompt_log_path.write_text("AI client unavailable or error occurred.\n", encoding="utf-8")
+            raw_json_path.write_text(json.dumps({"error": f"{e.__class__.__name__}: {e}"}, indent=2), encoding="utf-8")
+            used_ai = False
+
+        # Fallback if AI failed completely
+        if not segments_ai:
+            # naive 3-part seed
+            if captions:
+                segments_ai = [
+                    {"segment_type": "Introduction", "entry_point_phrase": captions[0]["text"]},
+                    {"segment_type": "How-To/Lesson", "entry_point_phrase": captions[len(captions)//2]["text"]},
+                    {"segment_type": "Call to Action", "entry_point_phrase": captions[-1]["text"]},
+                ]
+            else:
+                segments_ai = [{"segment_type": "Default", "entry_point_phrase": ""}]
+
+        # Consolidate/clean
+        segments_final = consolidate_segments(segments_ai, captions, max_segments=args.max_segments, min_spacing_s=args.min_spacing_s)
+        consolidated_preview_path.write_text(json.dumps({"segments": segments_final}, indent=2), encoding="utf-8")
+
+        print(f"[+] Planned {len(segments_final)} segments ({'AI' if used_ai else 'fallback'} + consolidation).")
+
+        out = {
+            "project_plan": [
+                {
+                    "take_number": "1",
+                    "proxy_filename": "subtitle 1.srt",
+                    "braw_filename": "subtitle 1.srt",
+                    "segments": segments_final
+                }
             ]
-        else:
-            segments_ai = [{"segment_type": "Default", "entry_point_phrase": ""}]
+        }
+        out_path = working_root / "41_production_order.json"
+        out_path.write_text(json.dumps(out, indent=2), encoding="utf-8")
+        print(f"[+] Wrote production order -> {out_path}")
+        print(f"[i] Debug artifacts:\n    - {prompt_log_path}\n    - {raw_json_path}\n    - {consolidated_preview_path}")
+        success_flag.touch()
 
-    # Consolidate/clean
-    segments_final = consolidate_segments(segments_ai, captions, max_segments=args.max_segments, min_spacing_s=args.min_spacing_s)
-    consolidated_preview_path.write_text(json.dumps({"segments": segments_final}, indent=2), encoding="utf-8")
-
-    print(f"[+] Planned {len(segments_final)} segments ({'AI' if used_ai else 'fallback'} + consolidation).")
-
-    out = {
-        "project_plan": [
-            {
-                "take_number": "1",
-                "proxy_filename": "subtitle 1.srt",
-                "braw_filename": "subtitle 1.srt",
-                "segments": segments_final
-            }
-        ]
-    }
-    out_path = working_root / "41_production_order.json"
-    out_path.write_text(json.dumps(out, indent=2), encoding="utf-8")
-    print(f"[+] Wrote production order → {out_path}")
-    print(f"[i] Debug artifacts:\n    - {prompt_log_path}\n    - {raw_json_path}\n    - {consolidated_preview_path}")
+    except Exception as e:
+        print(f"[!] An error occurred: {e}")
+        fail_flag.touch()
+        raise
 
 if __name__ == "__main__":
     main()

@@ -562,6 +562,7 @@ def cli():
     parser.add_argument("--keep_audio", action="store_true", help="Keep extracted wavs in temp_audio.")
     parser.add_argument("--sr", type=int, default=DEFAULT_SR_MAIN, help="Sample rate for analysis/extraction (16k recommended).")
 
+    parser.add_argument("--ffmpeg-dir", default=r"C:\ffmpeg\bin", type=Path, help="Path to the directory containing ffmpeg and ffprobe.")
     args = parser.parse_args()
 
     # Resolve project paths if available

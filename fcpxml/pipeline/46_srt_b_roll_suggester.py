@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # 46_srt_b_roll_suggester.py
-# Version: 3.2.0 (Maximum Effort Refactor)
-# Last Modified: 2025-09-04
+# Version: 3.3.0 (Nuanced Pacing Update)
+# Last Modified: 2025-09-16
 #
 # Purpose:
 #   [REFACTORED] Generate a comprehensive, timecoded B-roll plan by analyzing a
-#   timeline-level SRT file. This version removes all artificial suggestion caps
-#   and instructs the AI to find every possible opportunity for B-roll.
+#   timeline-level SRT file. This version includes nuanced rules for pacing,
+#   clip spacing ("breathing room"), and handling of sequential shots.
 
 import json
 import argparse
@@ -19,7 +19,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from project_paths import add_base_arg, from_args, ProjectPaths
+from project_paths import add_base_arg, from_args, ProjectPaths, get_active_project_name
+from token_logger import log_token_usage
 
 # --- Gemini / Vertex imports ---
 try:
@@ -178,9 +179,9 @@ class GeminiClient:
         self.safety_settings = [ types.SafetySetting(category=c, threshold="OFF") for c in ["HARM_CATEGORY_HATE_SPEECH", "HARM_CATEGORY_DANGEROUS_CONTENT", "HARM_CATEGORY_SEXUALLY_EXPLICIT", "HARM_CATEGORY_HARASSMENT"]] if _GENAI_AVAILABLE else []
 
     def generate(self, user_content: str, system_instruction: str, response_schema: dict,
-        max_output_tokens: int = 20000, temperature: float = 0.5, top_p: float = 0.95,
-    ) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
-        if not self.client: return None, '{"error": "GenAI not available"}'
+        max_output_tokens: int = 20000, temperature: float = 0.7, top_p: float = 0.45,
+    ) -> Optional[types.GenerateContentResponse]:
+        if not self.client: return None
         try:
             config = types.GenerateContentConfig(
                 temperature=temperature, top_p=top_p, seed=self.seed, max_output_tokens=max_output_tokens,
@@ -194,25 +195,31 @@ class GeminiClient:
                 contents=[types.Content(role="user", parts=[types.Part.from_text(text=user_content)])],
                 config=config,
             )
-            raw_text = getattr(response, "text", None)
-            return (json.loads(raw_text), raw_text) if raw_text else (None, None)
+            return response
         except Exception as e:
             print(f" [!] Gemini API error: {e}")
-            return None, str(e)
+            return None
 
 def suggestion_system_prompt() -> str:
-    # --- REVISED "MAXIMUM EFFORT" PROMPT ---
-    return """You are a senior B-roll director for a talking-head educational video. Your goal is to provide rich, comprehensive visual coverage to keep the content dynamic and engaging.
+    # --- REVISED "MAXIMUM EFFORT" PROMPT V2 (WITH PACING RULES) ---
+    return """You are a Creative Director for a talking-head educational video. Your task is to generate a comprehensive B-roll plan that is not only visually illustrative but also rhythmically sound and professional.
 
-Your primary directive is to identify every single opportunity for a B-roll shot that is directly motivated by the words in the transcript. It is much easier for a human editor to delete a few excess B-roll shots than it is for them to create new ones from scratch. When in doubt, suggest a shot. Lean towards providing heavy coverage.
+## Core Directive
+Your primary goal is to find every meaningful opportunity for B-roll. It is better to provide a few extra shots that can be deleted than to miss an opportunity. When in doubt, suggest a shot.
 
-RULES:
-- Each suggestion MUST be directly motivated by specific words in the transcript.
-- All timestamps must be accurate to the provided SRT.
-- Typical insert length is 1.5 to 4 seconds, but can be longer if the dialogue supports it.
-- Do NOT suggest B-roll for "Hook" or "Disclaimer" segments.
+## Pacing & Rhythm
+This is the most important part of your job. Visuals must serve the speaker's cadence.
+1.  **Enforce 'Breathing Room'**: After a B-roll clip (or a sequence of them) ends, you MUST leave a gap of **at least two full subtitle captions** where the main speaker is on-screen before suggesting the next B-roll shot. This prevents a jarring, "wall-to-wall" B-roll effect and gives the speaker necessary screen time.
+2.  **Minimum Duration**: Individual B-roll shots should be at least 1.5 seconds. Do not suggest clips shorter than this. Durations of 2.0 to 4.0 seconds are typical and preferred.
 
-Output strictly as JSON matching the schema.
+## Technical Rules
+- **Handle Sequences Correctly**: For rapid-fire lists or sequences in the dialogue (e.g., "...essays, documents, and tests"), generate a **separate B-roll suggestion for each item**. This creates a 'doublet' or 'triplet' sequence of clips. **Do not combine them into one prompt.**
+- **Motivation**: Every suggestion MUST be directly motivated by specific words in the transcript. State the motivation clearly in the `reasoning` field.
+- **Accuracy**: All timestamps must be precise and align with the provided SRT caption data.
+- **Forbidden Segments**: Do NOT suggest B-roll for segments identified as "Hook" or "Disclaimer".
+- **Timeline Offset**: The timeline may start at an offset (e.g., 3600 seconds). All your timestamps must respect this offset.
+
+Output strictly as JSON matching the provided schema.
 """
 
 def suggestion_response_schema() -> dict:
@@ -226,10 +233,22 @@ def build_suggestion_user_payload(captions: List[Caption]) -> str:
 # Main
 # --------------------------------
 def main(cfg):
-    print("[+] Starting AI B-Roll Suggester (SRT-Based, Maximum Effort)...")
     p = from_args(cfg)
-    
+    script_name = Path(__file__).stem
+    success_flag = p.workspace / f"{script_name}.success"
+    fail_flag = p.workspace / f"{script_name}.fail"
+
+    if success_flag.exists():
+        print(f"[+] Script {script_name} has already run successfully. Skipping.")
+        return
+
+    if fail_flag.exists():
+        print(f"[i] Retrying script {script_name} after previous failure.")
+        fail_flag.unlink()
+
     try:
+        print("[+] Starting AI B-Roll Suggester (SRT-Based, Nuanced Pacing)...")
+        
         srt_path = discover_srt(p.working_root)
         captions = parse_srt(srt_path)
         prod41 = load_production_order(p)
@@ -268,43 +287,58 @@ def main(cfg):
             user_payload = build_suggestion_user_payload(seg_captions)
             
             print(f"   -> Calling AI for {len(seg_captions)} captions...")
-            parsed, raw = gemini.generate(
+            response = gemini.generate(
                 user_content=user_payload,
                 system_instruction=suggestion_system_prompt(),
                 response_schema=suggestion_response_schema(),
                 temperature=cfg.suggest_temp
             )
 
-            if parsed and isinstance(parsed.get("b_roll_suggestions"), list):
-                suggestions = parsed["b_roll_suggestions"]
-                print(f"   -> Received {len(suggestions)} suggestions for this segment.")
-                all_suggestions.extend(suggestions) 
+            if response and response.text:
+                if response.usage_metadata:
+                    log_token_usage(
+                        project_name=get_active_project_name(),
+                        script_name=Path(__file__).name,
+                        model_name=cfg.model,
+                        prompt_token_count=response.usage_metadata.prompt_token_count,
+                        candidates_token_count=response.usage_metadata.candidates_token_count,
+                        total_token_count=response.usage_metadata.total_token_count
+                    )
+                parsed = json.loads(response.text)
+                if parsed and isinstance(parsed.get("b_roll_suggestions"), list):
+                    suggestions = parsed["b_roll_suggestions"]
+                    print(f"   -> Received {len(suggestions)} suggestions for this segment.")
+                    all_suggestions.extend(suggestions) 
+                else:
+                    print(f"   -> No valid suggestions returned for this segment. Raw response: {response.text[:200] if response.text else 'N/A'}")
             else:
-                print(f"   -> No valid suggestions returned for this segment. Raw response: {raw[:200] if raw else 'N/A'}")
+                print(f"   -> No valid suggestions returned for this segment. Raw response: {response.text[:200] if response and response.text else 'N/A'}")
 
         all_suggestions.sort(key=lambda x: x.get("timestamp_start", 0.0))
         
         output_data = {
             "source_srt": str(srt_path),
             "b_roll_plan": all_suggestions,
-            "generator_metadata": {"model": cfg.model, "effort_level": "maximum"}
+            "generator_metadata": {"model": cfg.model, "effort_level": "maximum_nuanced"}
         }
         atomic_write_json(str(out_path), output_data)
         print(f"\n[+] Success! Saved {len(all_suggestions)} total B-roll suggestions to '{out_path}'")
+        success_flag.touch()
 
-    except FileNotFoundError as e:
-        print(f"\n[!] ERROR: A required file was not found: {e}")
     except Exception as e:
         print(f"\n[!] An unexpected error occurred: {e}")
+        fail_flag.touch()
+        raise
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate SRT-based B-roll suggestions.")
     add_base_arg(parser)
-    parser.add_argument("--project_id", type=str, default="qtow-148623")
+    parser.add_argument("--project_id", type=str, default="qtow-14862_")
     parser.add_argument("--location", type=str, default="us-central1")
     parser.add_argument("--model", type=str, default="gemini-2.5-pro")
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--output_dir", type=str, default=None, help="Override for the 46_ai_b_roll_plans directory.")
+    parser.add_-argument("--output_dir", type=str, default=None, help="Override for the 46_ai_b_roll_plans directory.")
     # REMOVED: No longer needed as the prompt is now hardcoded for max effort.
     # parser.add_argument("--max_suggestions_per_chunk", type=int, default=30)
     parser.add_argument("--suggest_temp", type=float, default=0.5, help="Slightly higher temp for more creativity")

@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # 59_generate_broll_placeholders.py
-# Version: 2.1.0 (Advanced Text Rendering)
-# Last Modified: 2025-09-03
+# Version: 2.2.0 (Automatic Text Wrapping)
+# Last Modified: 2025-09-16
 #
 # Purpose:
 #   Reads B-roll plans and generates professional placeholder video clips using FFmpeg.
 #   This version renders the prompt and reasoning as separate, formatted text blocks
-#   for improved readability in the timeline.
+#   and now includes automatic text wrapping to prevent overflow.
 
 import argparse
 import json
 import os
 import subprocess
 import tempfile
+import textwrap # <-- NEW: Import textwrap module
 from pathlib import Path
 from typing import Tuple
 
@@ -73,9 +74,27 @@ def generate_placeholder_clip(output_path: Path, item: dict, args: argparse.Name
     reasoning = item.get("reasoning", "No reasoning provided.")
     item_type = item.get("type", "b-roll")
     
+    # --- NEW: Automatic Text Wrapping Logic ---
+    width, _ = parse_size(args.resolution)
+    # Calculate available width in pixels, considering margins
+    available_width_px = width * (1.0 - (args.margin_x * 2))
+
+    # Estimate character width as ~55% of font size (a good heuristic for proportional fonts like Arial)
+    sug_char_width_px = args.fontsize_suggestion * 0.55
+    rsn_char_width_px = args.fontsize_reasoning * 0.55
+
+    # Calculate max characters per line
+    sug_chars_per_line = int(available_width_px / sug_char_width_px)
+    rsn_chars_per_line = int(available_width_px / rsn_char_width_px)
+    
+    # Wrap the text using the calculated widths
+    wrapped_prompt = textwrap.fill(prompt, width=sug_chars_per_line)
+    wrapped_reasoning = textwrap.fill(reasoning, width=rsn_chars_per_line)
+    # --- END NEW LOGIC ---
+
     header = f"TYPE: {item_type.upper()} | DURATION: {duration:.2f}s"
-    suggestion_text = f"{header}\n\nPROMPT:\n{prompt}"
-    reasoning_text = f"REASONING:\n{reasoning}"
+    suggestion_text = f"{header}\n\nPROMPT:\n{wrapped_prompt}"
+    reasoning_text = f"REASONING:\n{wrapped_reasoning}"
 
     try:
         # Use temporary files to handle multi-line text and special characters safely
@@ -115,11 +134,11 @@ def generate_placeholder_clip(output_path: Path, item: dict, args: argparse.Name
 # Main
 # -------------------------------
 def main(cfg):
-    print("[+] Starting B-Roll Placeholder Generation (Step 47)...")
+    print("[+] Starting B-Roll Placeholder Generation...")
 
     p = from_args(cfg)
     input_dir = Path(cfg.input_dir or str(p.b_roll_dir))
-    output_dir = Path(cfg.output_dir or str(p.working_root / "47_generated_b_roll"))
+    output_dir = Path(cfg.output_dir or str(p.working_root / "59_generated_b_roll"))
     output_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"[i] Reading B-roll plans from: {input_dir}")

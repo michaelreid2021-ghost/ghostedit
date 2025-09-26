@@ -1,3 +1,13 @@
 myenv/
 drafts/
 __pycache__/
+*.log
+*.txt
+gen-lang-client-*.json
+ai_token_usage.csv
+active_project.txt
+ACTIVE_PROJECT.txt
+BROLL_REVIEW/
+completed/
+temp_audio/
+new_timeline.fcpxml/
