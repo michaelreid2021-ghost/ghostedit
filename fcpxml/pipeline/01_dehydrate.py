@@ -6,6 +6,7 @@
 
 import xml.etree.ElementTree as ET
 import json
+import sys
 import argparse
 from pathlib import Path
 from project_paths import add_base_arg, from_args
@@ -63,14 +64,14 @@ def main():
     if not proxies_dir.exists():
         print(f"[!] FATAL ERROR: Proxies directory not found at '{proxies_dir}'")
         return
-    existing_proxies = [f for f in proxies_dir.iterdir() if f.is_file() and f.suffix.lower() in ('.mov', '.mp4')]
+    existing_proxies = [f for f in proxies_dir.iterdir() if f.is_file() and f.suffix.lower() in ('.mov', '.mp4', '.braw')]
     print(f"[i] Found {len(existing_proxies)} potential proxy files in '{proxies_dir}'.")
 
     # --- Step 2: Build lookup maps from FCPXML ---
     assets_by_id = {
         asset.get('id'): asset
         for asset in root.findall('.//resources/asset')
-        if asset.get('name', '').lower().endswith(('.braw', '.mov'))
+        if asset.get('name', '').lower().endswith(('.braw', '.mov', '.mp4'))
     }
     asset_by_basename = {Path(asset.get('name')).stem: asset_id for asset_id, asset in assets_by_id.items()}
     
@@ -143,6 +144,7 @@ def main():
         scene_data = {
             "scene_number": i,
             "is_multicam": True,
+            "multicam_id": scene["multicam_id"],
             "multicam_name": multicam_def["name"],
             "proxy_filename": scene["proxy_filename"],
             "source_files": source_files,
@@ -152,7 +154,7 @@ def main():
 
     if not master_manifest:
         print("[!] Dehydration resulted in an empty manifest. No proxies could be matched to timeline clips.")
-        return
+        sys.exit(1) # <--- THIS IS THE LOUD FAILURE
 
     master_manifest_path.parent.mkdir(parents=True, exist_ok=True)
     master_manifest_path.write_text(json.dumps(master_manifest, indent=4), encoding="utf-8")

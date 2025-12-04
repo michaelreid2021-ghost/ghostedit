@@ -55,7 +55,7 @@ def main():
     out_name = "info.fcpxml"
     
     # CORRECTED: Set the output path to the user's home directory.
-    out_path = os.path.join(os.path.expanduser("~"), out_name)
+    out_path = os.path.join(os.path.expanduser("~\scratch"), out_name)
 
     try:
         # Use the FCPXML version constant as the main exportType.
@@ -66,8 +66,9 @@ def main():
     print(f"Exporting to: {out_path}")
     
     # CORRECTED: Use the two-argument version of the Export call for FCPXML.
-    ok = timeline.Export(out_path, export_type)
-
+    export_subtype = resolve.EXPORT_NONE
+    ok = timeline.Export(out_path, export_type, export_subtype)
+ 
     if not ok:
         _fail("Timeline.Export() for FCPXML failed.")
     

@@ -25,24 +25,33 @@ logging.basicConfig(
     ]
 )
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="Monitor staged projects for A-Roll processing.")
+    parser.add_argument("--watch-dir", type=Path, help="Directory containing staged projects (IN_PROGRESS).")
+    parser.add_argument("--review-dir", type=Path, help="Directory for review-ready exports.")
+    parser.add_argument("--projects-base-dir", type=Path, help="Canonical projects root directory.")
+    return parser.parse_args()
+
+
+
 def main():
-    # --- NO ARGUMENTS NEEDED ---
-    # This watcher is now smart and derives all necessary paths.
-    
+    args = parse_args()
+
     try:
-        # Intelligently locate directories based on the active project config.
-        # Assumes a structure like .../assembly_line/projects
-        projects_base_dir = Path(get_projects_root())
+        if args.projects_base_dir:
+            projects_base_dir = args.projects_base_dir.resolve()
+        else:
+            projects_base_dir = Path(get_projects_root()).resolve()
         assembly_line_root = projects_base_dir.parent
-        
-        watch_dir = assembly_line_root / "in_progress"
-        review_dir = assembly_line_root / "review_aroll"
+        watch_dir = (args.watch_dir or (assembly_line_root / "in_progress")).resolve()
+        review_dir = (args.review_dir or (assembly_line_root / "review_aroll")).resolve()
     except Exception as e:
         logging.critical(f"Could not determine project paths. Is an active project set? Error: {e}")
         sys.exit(1)
     
     # The doer is ALWAYS 004, located in the same directory as this script.
     doer_script_path = script_dir / "004_aroll_doer.py"
+    notification_script_path = script_dir / "299_send_notification.py"
     if not doer_script_path.exists():
         logging.critical(f"FATAL: Doer script not found at expected location: {doer_script_path}")
         sys.exit(1)
@@ -51,6 +60,8 @@ def main():
     review_dir.mkdir(parents=True, exist_ok=True)
 
     logging.info(f"A-Roll Watcher started. Monitoring: {watch_dir}")
+    logging.info(f"A-Roll review output directory: {review_dir}")
+    logging.info(f"Projects base directory: {projects_base_dir}")
 
     while True:
         try:
@@ -101,14 +112,22 @@ def main():
                         logging.info(f"Copying '{source_fcpxml}' to '{dest_fcpxml}' for review.")
                         shutil.copy(str(source_fcpxml), str(dest_fcpxml))
 
-                        # 4. Create the success flag in the IN_PROGRESS directory to prevent reprocessing
+                        # 4. Send notification with flag  --notification AROLL_Review
+                        notification_command = [
+                        sys.executable,
+                        str(notification_script_path),
+                        "--notification", "AROLL_Review"
+                            ]
+                        logging.info(f"Executing A-Roll Notification for project at '{final_project_path}'...")
+                        result = subprocess.run(notification_command, check=True, capture_output=True, text=True)
+
+                        # 5. Create the success flag in the IN_PROGRESS directory to prevent reprocessing
                         success_flag_path = staged_dir / ".aroll_processing_complete"
                         logging.info(f"Creating success flag at '{success_flag_path}'")
                         success_flag_path.touch()
 
-                        # 5. Remove the original trigger file so this loop doesn't pick it up again
-                        logging.info(f"Removing trigger file '{trigger_file}'")
-                        trigger_file.unlink()
+
+
 
                     except subprocess.CalledProcessError as e:
                         logging.error(f"A-Roll Doer script FAILED for '{project_name}'.")

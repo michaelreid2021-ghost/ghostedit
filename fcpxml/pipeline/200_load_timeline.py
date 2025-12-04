@@ -18,6 +18,7 @@ except ImportError:
 def main():
     parser = argparse.ArgumentParser(description="Load a project's FCPXML into the current Resolve project.")
     add_base_arg(parser)
+    # No extra arguments required. We infer context from the base path.
     args = parser.parse_args()
     p = from_args(args)
 
@@ -29,46 +30,72 @@ def main():
     if not resolve:
         sys.exit("Error: Cannot connect to DaVinci Resolve. Please ensure it is running.")
 
-    project = resolve.GetProjectManager().GetCurrentProject()
-    if not project:
-        sys.exit("Error: No project is loaded in DaVinci Resolve.")
+    # INFER Project Name from the pipeline base name (e.g., "rebecca_green_general")
+    target_name = p.base.name 
+    project_manager = resolve.GetProjectManager() # [cite: 28]
+    
+    print(f"Connected to Resolve v{resolve.GetVersionString()}") # [cite: 35]
 
-    timeline_name = p.base.name
-    print(f"Connected to Resolve v{resolve.GetVersionString()}")
-    print(f"Ensuring timeline '{timeline_name}' is loaded in project '{project.GetName()}'.")
+    # --- 1. Ensure Correct Project is Open ---
+    current_project = project_manager.GetCurrentProject() # [cite: 54]
+    
+    if current_project and current_project.GetName() == target_name:
+        print(f"Project '{target_name}' is already active.")
+        project = current_project
+    else:
+        print(f"Attempting to load project '{target_name}'...")
+        project = project_manager.LoadProject(target_name) # [cite: 52]
+        
+        if not project:
+            print(f"Project '{target_name}' not found. Creating it...")
+            project = project_manager.CreateProject(target_name) # [cite: 51]
+            if not project:
+                sys.exit(f"Error: Failed to create or load project '{target_name}'.")
 
-    # --- Make the timeline loading idempotent and non-destructive ---
+    # --- 2. Clean Slate Timeline ---
+    # We want to 'unload' (delete) the timeline if it exists so we can reload the FCPXML fresh.
+    media_pool = project.GetMediaPool() # [cite: 81]
+    timeline_count = project.GetTimelineCount() # [cite: 82]
+    
+    # Check if the timeline already exists
     existing_timeline = None
-    for i in range(1, int(project.GetTimelineCount()) + 1):
-        timeline = project.GetTimelineByIndex(i)
-        if timeline.GetName() == timeline_name:
-            existing_timeline = timeline
+    for i in range(1, timeline_count + 1):
+        t = project.GetTimelineByIndex(i) # [cite: 83]
+        if t.GetName() == target_name:
+            existing_timeline = t
             break
-
+    
     if existing_timeline:
-        print(f"Timeline '{timeline_name}' already exists. Setting it as active.")
-        project.SetCurrentTimeline(existing_timeline)
-        new_timeline = existing_timeline
+        print(f"Timeline '{target_name}' exists. Unloading (deleting) to force fresh import...")
+        # DeleteTimelines takes a list of timeline objects
+        if not media_pool.DeleteTimelines([existing_timeline]): # 
+            sys.exit(f"Error: Failed to remove stale timeline '{target_name}'.")
     else:
-        print(f"Timeline '{timeline_name}' not found. Importing from '{fcpxml_path.name}'.")
-        mediaPool = project.GetMediaPool()
-        import_options = {"timelineName": timeline_name, "importSourceClips": True}
-        new_timeline = mediaPool.ImportTimelineFromFile(str(fcpxml_path), import_options)
-        if not new_timeline:
-            time.sleep(2) # Retry after a short delay
-            new_timeline = mediaPool.ImportTimelineFromFile(str(fcpxml_path), import_options)
-            if not new_timeline:
-                sys.exit(f"Error: Failed to import timeline from '{fcpxml_path}'.")
+        print(f"Timeline '{target_name}' not found (Clean slate confirmed).")
 
-    print(f"Successfully loaded timeline '{new_timeline.GetName()}'.")
+    # --- 3. Import FCPXML ---
+    print(f"Importing from '{fcpxml_path.name}'...")
     
-    if project.SetCurrentTimeline(new_timeline):
-        print(f"Successfully set '{new_timeline.GetName()}' as the active timeline.")
+    # We enforce the timeline name to match our project/base name
+    import_options = {
+        "timelineName": target_name, 
+        "importSourceClips": True
+    } # [cite: 154, 155]
+    
+    new_timeline = media_pool.ImportTimelineFromFile(str(fcpxml_path), import_options) # 
+
+    if not new_timeline:
+        # Retry once for stability
+        time.sleep(1)
+        new_timeline = media_pool.ImportTimelineFromFile(str(fcpxml_path), import_options)
+        if not new_timeline:
+             sys.exit(f"Error: Import failed. DaVinci could not read '{fcpxml_path}'. check file validity.")
+
+    # --- 4. Set Active ---
+    if project.SetCurrentTimeline(new_timeline): # [cite: 84]
+        print(f"Success: '{new_timeline.GetName()}' is now the active timeline.")
     else:
-        # By this point, the timeline should exist, so this is a critical failure.
-        sys.exit("Error: Could not set the imported timeline as active.")
-    
-    print("--- Timeline load complete ---")
+        sys.exit("Error: Imported timeline could not be set as active.")
 
 if __name__ == "__main__":
     main()

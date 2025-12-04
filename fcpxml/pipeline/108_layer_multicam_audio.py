@@ -1,257 +1,162 @@
 #!/usr/bin/env python3
 # 108_layer_multicam_audio.py
-# v1.3 (2025-08-21)
-# Purpose: Rebuild FCPXML multicam sections so that each contiguous sequence of <mc-clip>
-#          sharing the same ref id has a single, continuous audio bed (srcEnable="all") on V1,
-#          with all visual cutaways duplicated as video-only (srcEnable="video") on lane="1".
-# Notes:
-# - Self-contained: supports either --base (auto paths) or explicit --fcpxml/--out.
-# - In-place replacement: only multicam runs are rebuilt; everything else in the spine is preserved.
+# v2.0 (2025-11-19) - DaVinci Style Split-Source
+# Purpose: Locks audio to "Angle 1" by splitting mc-source components within existing clips.
+#          Does NOT alter timeline timing, offsets, or durations.
+#          Does NOT use lanes. 
 
 import argparse
 import copy
 import sys
 import xml.etree.ElementTree as ET
-from dataclasses import dataclass
-from fractions import Fraction
 from pathlib import Path
-from typing import List, Optional, Tuple
-
+from typing import Optional, Tuple
+from xml.dom import minidom
 
 # ------------------------- Utilities -------------------------
 
-def parse_fcpx_frac(s: str) -> Fraction:
-    s = s.strip()
-    if not s.endswith('s'):
-        raise ValueError(f"Invalid FCPXML time format (must end with 's'): {s!r}")
-    body = s[:-1]
-    if '/' in body:
-        n, d = body.split('/')
-        return Fraction(int(n), int(d))
-    # integer or decimal seconds are rare, but support integer seconds defensively
-    return Fraction(body)
+def get_angle_id_by_name(root: ET.Element, ref_id: str, angle_name: str = "Angle 1") -> Optional[str]:
+    """Looks up the angleID for a specific angle name inside the media resource definition."""
+    media = root.find(f".//resources/media[@id='{ref_id}']")
+    if media:
+        # Try exact match first
+        angle = media.find(f".//mc-angle[@name='{angle_name}']")
+        if angle:
+            return angle.get('angleID')
+        # Fallback: sometimes names have spaces or case diffs, but usually exact is fine for machine generated
+    return None
 
+def get_current_video_angle(clip: ET.Element) -> Optional[str]:
+    """Finds the angleID of the currently active video source."""
+    # Check for existing specific video source
+    vid_src = clip.find("./mc-source[@srcEnable='video']")
+    if vid_src and vid_src.get('angleID'):
+        return vid_src.get('angleID')
+    
+    # Check for 'all' source
+    all_src = clip.find("./mc-source[@srcEnable='all']")
+    if all_src and all_src.get('angleID'):
+        return all_src.get('angleID')
+        
+    # Check for ANY source if undefined
+    any_src = clip.find("./mc-source")
+    if any_src and any_src.get('angleID'):
+        return any_src.get('angleID')
+        
+    return None
 
-def sum_durations_str(clips: List[ET.Element]) -> str:
-    total = Fraction(0, 1)
-    for c in clips:
-        total += parse_fcpx_frac(c.get('duration', '0/1s'))
-    return f"{total.numerator}/{total.denominator}s"
+def create_mc_source(angle_id: str, enable_mode: str, template_source: Optional[ET.Element]) -> ET.Element:
+    """Creates a new mc-source element, copying transforms from template if available."""
+    new_src = ET.Element('mc-source')
+    new_src.set('angleID', angle_id)
+    new_src.set('srcEnable', enable_mode)
+    
+    if template_source is not None:
+        # Copy adjust-transform and adjust-conform if they exist
+        for child in template_source:
+            if child.tag in ['adjust-transform', 'adjust-conform']:
+                new_src.append(copy.deepcopy(child))
+    else:
+        # Default transform if we have absolutely nothing to clone (rare)
+        tf = ET.SubElement(new_src, 'adjust-transform')
+        tf.set('scale', '1 1')
+        tf.set('anchor', '0 0')
+        tf.set('position', '0 0')
+        
+    return new_src
 
+def validate_and_prettify(tree: ET.ElementTree) -> str:
+    rough = ET.tostring(tree.getroot(), encoding='unicode')
+    reparsed = ET.fromstring(rough)
+    return minidom.parseString(ET.tostring(reparsed)).toprettyxml(indent="  ")
 
-def get_mc_source(el: ET.Element) -> Optional[ET.Element]:
-    return el.find('mc-source')
+# ------------------------- Core Logic -------------------------
 
-
-def get_src_enable(mc_source: ET.Element) -> str:
-    # FCPXML defaults to "all" if not explicitly "video"
-    val = mc_source.get('srcEnable')
-    return val if val in ('all', 'video') else 'all'
-
-
-def find_spine(root: ET.Element) -> ET.Element:
+def process_timeline(tree: ET.ElementTree) -> Tuple[bool, str]:
+    root = tree.getroot()
     spine = root.find('.//spine')
     if spine is None:
-        raise RuntimeError("Could not locate <spine> in FCPXML.")
-    return spine
+        return False, ""
 
+    changed_count = 0
 
-def contiguous_mc_runs(spine: ET.Element) -> List[List[ET.Element]]:
-    """
-    Return lists of adjacent <mc-clip> elements that all share the same ref id
-    and are contiguous (i.e., no non-mc element in between).
-    Only runs of length >= 2 are interesting for rebuild.
-    """
-    runs: List[List[ET.Element]] = []
-    cur: List[ET.Element] = []
-    cur_ref: Optional[str] = None
-    for el in spine:
-        if el.tag == 'mc-clip':
-            ref = el.get('ref')
-            if cur and ref == cur_ref:
-                cur.append(el)
-            else:
-                if len(cur) >= 2:
-                    runs.append(cur)
-                cur = [el]
-                cur_ref = ref
-        else:
-            if len(cur) >= 2:
-                runs.append(cur)
-            cur = []
-            cur_ref = None
-    if len(cur) >= 2:
-        runs.append(cur)
-    return runs
-
-
-def first_clip_with_audio(clips: List[ET.Element]) -> ET.Element:
-    """
-    Choose the first clip in the run whose mc-source is NOT explicitly video-only.
-    If all are video-only, fall back to the first clip.
-    """
-    for c in clips:
-        ms = get_mc_source(c)
-        if ms is None:
-            continue
-        if get_src_enable(ms) != 'video':
-            return c
-    return clips[0]
-
-
-def clone_with_lane(el: ET.Element, lane_value: Optional[str]) -> ET.Element:
-    dup = copy.deepcopy(el)
-    if lane_value is None:
-        if 'lane' in dup.attrib:
-            del dup.attrib['lane']
-    else:
-        dup.set('lane', lane_value)
-    return dup
-
-
-@dataclass(frozen=True)
-class ProjectPaths:
-    base: Path  # project root
-
-    @property
-    def info_fcpxml(self) -> Path:
-        return self.base / "Info.fcpxml"
-
-    @property
-    def out_layered(self) -> Path:
-        return self.base / "ai_working_files" / "108_layered_audio_final.fcpxml"
-
-
-def resolve_io_paths(args: argparse.Namespace) -> Tuple[Path, Path]:
-    """
-    Supports either:
-      --base /path/to/project        (reads base/Info.fcpxml, writes base/ai_working_files/108_layered_audio_final.fcpxml)
-    OR
-      --fcpxml in.fcpxml --out out.fcpxml
-    """
-    if args.base:
-        p = ProjectPaths(Path(args.base).resolve())
-        return (p.info_fcpxml, p.out_layered)
-    if args.fcpxml and args.out:
-        return (Path(args.fcpxml).resolve(), Path(args.out).resolve())
-    raise SystemExit("Specify either --base OR both --fcpxml and --out.")
-
-
-# ------------------------- Core Rebuild Logic -------------------------
-
-def rebuild_multicam_runs(tree: ET.ElementTree) -> bool:
-    """
-    For each contiguous mc-clip run with same ref, replace that run with:
-      - one audio bed clip (srcEnable="all") at V1 covering full run duration
-      - each original segment duplicated as video-only (srcEnable="video") at lane="1"
-    Returns True if any changes made.
-    """
-    root = tree.getroot()
-    spine = find_spine(root)
-    runs = contiguous_mc_runs(spine)
-    if not runs:
-        return False
-
-    # We'll operate run-by-run, replacing in-place at the index of the run's first clip.
-    for run in runs:
-        first = run[0]
-        try:
-            insert_index = list(spine).index(first)
-        except ValueError:
-            # Shouldn't happen, but if it does, skip this run safely
+    # Iterate over every mc-clip in the spine
+    for clip in spine.findall('mc-clip'):
+        ref_id = clip.get('ref')
+        if not ref_id:
             continue
 
-        # Determine audio anchor clip (the one that carried audio)
-        anchor_clip = first_clip_with_audio(run)
-        anchor_ms = get_mc_source(anchor_clip)
-        if anchor_ms is None:
-            # If somehow missing, skip safely
+        # 1. Identify "Angle 1" (The Audio Bed Target)
+        angle_1_id = get_angle_id_by_name(root, ref_id, "Angle 1")
+        if not angle_1_id:
+            print(f"[WARN] Could not find 'Angle 1' for clip {clip.get('name')}. Skipping.")
             continue
 
-        # Calculate span for audio bed
-        total_duration = sum_durations_str(run)
-        start_offset = run[0].get('offset')
-        start_time = run[0].get('start')
+        # 2. Identify Current Video Angle (The Visual Target)
+        current_video_id = get_current_video_angle(clip)
+        if not current_video_id:
+            # If no angle is set, it likely defaults to Angle 1, but let's be explicit
+            current_video_id = angle_1_id
 
-        # Build audio bed from the anchor clip's structure
-        audio_bed = copy.deepcopy(anchor_clip)
-        audio_bed.set('duration', total_duration)
-        if start_offset is not None:
-            audio_bed.set('offset', start_offset)
-        if start_time is not None:
-            audio_bed.set('start', start_time)
+        # 3. Capture existing transforms/settings to clone
+        # We grab the first available source to use as a template for transforms
+        template_src = clip.find('mc-source')
 
-        audio_bed_ms = get_mc_source(audio_bed)
-        if audio_bed_ms is None:
-            # If the duplicate somehow lost mc-source, hard abort this run.
-            continue
-        # Ensure audio bed is "all"
-        audio_bed_ms.set('srcEnable', 'all')
-        # Ensure the anchor angle is retained
-        if anchor_ms.get('angleID'):
-            audio_bed_ms.set('angleID', anchor_ms.get('angleID'))
+        # 4. WIPE existing sources
+        # We are rewriting the wiring completely to guarantee structure
+        for child in list(clip):
+            if child.tag == 'mc-source':
+                clip.remove(child)
 
-        # Prepare video-only duplicates on lane 1
-        video_only_clips: List[ET.Element] = []
-        for seg in run:
-            dup = clone_with_lane(seg, "1")
-            dup_ms = get_mc_source(dup)
-            if dup_ms is not None:
-                dup_ms.set('srcEnable', 'video')
-            video_only_clips.append(dup)
+        # 5. INJECT New Split Sources
+        
+        # Source A: VIDEO (Current Angle)
+        # We insert Video first (convention, though order technically doesn't matter to XML parser)
+        vid_source = create_mc_source(current_video_id, 'video', template_src)
+        clip.append(vid_source)
 
-        # Remove the original run
-        for old in run:
-            try:
-                spine.remove(old)
-            except ValueError:
-                pass  # already removed; continue
+        # Source B: AUDIO (Angle 1)
+        aud_source = create_mc_source(angle_1_id, 'audio', template_src)
+        clip.append(aud_source)
 
-        # Insert newly layered structure at the original position:
-        # Insert in reverse so final order is audio_bed, then each video segment following.
-        for dup in reversed(video_only_clips):
-            spine.insert(insert_index, dup)
-        spine.insert(insert_index, audio_bed)
+        changed_count += 1
 
-    return True
-
+    if changed_count > 0:
+        print(f"[+] Updated {changed_count} clips to Split-Source (Audio Locked to Angle 1).")
+        return True, validate_and_prettify(tree)
+    
+    return False, ""
 
 # ------------------------- CLI -------------------------
 
-def build_arg_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(
-        description="Restructure multicam edits so each run has a continuous audio bed (V1, srcEnable=all) "
-                    "and all visual cutaways as video-only inserts (lane=1, srcEnable=video)."
-    )
-    p.add_argument("--base", help="Project base directory (expects Info.fcpxml in this folder).")
-    p.add_argument("--fcpxml", help="Explicit input FCPXML path.")
-    p.add_argument("--out", help="Explicit output FCPXML path.")
-    return p
-
-
-def main() -> None:
-    parser = build_arg_parser()
+def main():
+    parser = argparse.ArgumentParser(description="Lock Multicam Audio to Angle 1 using Split-Source (DaVinci Style).")
+    parser.add_argument("--fcpxml", required=True, help="Input FCPXML.")
+    parser.add_argument("--out", required=True, help="Output FCPXML.")
+    
     args = parser.parse_args()
 
-    in_path, out_path = resolve_io_paths(args)
-    if not in_path.exists():
-        print(f"[!] FATAL: Input FCPXML not found: {in_path}", file=sys.stderr)
-        sys.exit(2)
+    in_path = Path(args.fcpxml).resolve()
+    out_path = Path(args.out).resolve()
 
-    out_path.parent.mkdir(parents=True, exist_ok=True)
+    if not in_path.exists():
+        print(f"[!] Input not found: {in_path}")
+        sys.exit(1)
 
     tree = ET.parse(str(in_path))
-    changed = rebuild_multicam_runs(tree)
+    changed, xml_str = process_timeline(tree)
 
-    tree.write(str(out_path), encoding='utf-8', xml_declaration=True)
     if changed:
-        print(f"[+] Rebuilt multicam audio layering. Wrote: {out_path}")
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(out_path, 'w', encoding='utf-8') as f:
+            f.write(xml_str)
+        print(f"[SUCCESS] Wrote to {out_path}")
     else:
-        print(f"[i] No qualifying multicam runs found. Copied unchanged to: {out_path}")
-
+        print("[i] No multicam clips found or no changes needed.")
+        # Copy original if no changes
+        if in_path != out_path:
+             with open(out_path, 'w', encoding='utf-8') as f:
+                f.write(ET.tostring(tree.getroot(), encoding='unicode'))
 
 if __name__ == "__main__":
     main()
-
-# Changelog:
-# v1.3 (2025-08-21): Self-contained IO options; robust audio-anchor selection; safe in-place run replacement.

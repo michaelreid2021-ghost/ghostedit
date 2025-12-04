@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-# 41_whisper_transcriber.py
+# 03_whisper_transcriber.py
 # Updated to support both .mp4 and .mov proxy files.
+# Updated to reassemble fragmented segments into full sentences.
 
 import os
 import json
@@ -8,10 +9,12 @@ import subprocess
 import argparse
 from pathlib import Path
 import whisper
+import torch
+import re
 
 from project_paths import add_base_arg, from_args
 
-WHISPER_MODEL = "base"
+WHISPER_MODEL = "large-v3"
 
 def extract_audio_segment(ffmpeg_path: str, video_path: str, output_wav_path: str):
     """Extracts audio from the entire video file."""
@@ -26,6 +29,52 @@ def extract_audio_segment(ffmpeg_path: str, video_path: str, output_wav_path: st
         output_wav_path
     ]
     subprocess.run(command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+def reassemble_transcript(raw_segments):
+    """
+    Merges small Whisper segments into larger blocks based on sentence endings.
+    Terminators: . ? !
+    """
+    merged = []
+    current_text_buffer = []
+    current_start = None
+    
+    # Regex to check if string ends with sentence punctuation (ignoring trailing spaces/quotes)
+    # We look for . ? ! followed optionally by quote or space
+    eos_pattern = re.compile(r'[.?!][\"\']?\s*$')
+
+    for seg in raw_segments:
+        text = seg.get('text', '')
+        
+        if current_start is None:
+            current_start = seg.get('start', 0.0)
+
+        current_text_buffer.append(text)
+        
+        # Join temporarily to check the ending of the current accumulated phrase
+        # Whisper usually provides leading spaces on segments, so we just join strictly
+        combined_text = "".join(current_text_buffer)
+
+        if eos_pattern.search(combined_text):
+            # Found a sentence end
+            merged.append({
+                "start": current_start,
+                "end": seg.get('end', 0.0),
+                "text": combined_text.strip()
+            })
+            # Reset buffer
+            current_text_buffer = []
+            current_start = None
+
+    # Handle any leftovers in the buffer (e.g. sentence didn't end with punctuation)
+    if current_text_buffer:
+        merged.append({
+            "start": current_start,
+            "end": raw_segments[-1].get('end', 0.0),
+            "text": "".join(current_text_buffer).strip()
+        })
+
+    return merged
 
 def main():
     parser = argparse.ArgumentParser(description="Transcribe proxy videos using Whisper and write scene manifest.")
@@ -43,7 +92,8 @@ def main():
     out_path = args.out or p.scene_manifest
     temp_audio_dir = p.temp_audio
     ffmpeg_path = args.ffmpeg
-
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"[+] Using device: {device}")
     print("[+] Transcription configuration:")
     print(f"  base: {p.base}")
     print(f"  proxies: {proxies_dir}")
@@ -64,7 +114,7 @@ def main():
         return
 
     print("[+] Loading Whisper...")
-    model = whisper.load_model(args.whisper_model)
+    model = whisper.load_model(args.whisper_model, device=device)
 
     scenes = json.loads(manifest_path.read_text(encoding="utf-8"))
     print(f"[+] {len(scenes)} scenes found.")
@@ -75,9 +125,11 @@ def main():
     for i, scene in enumerate(scenes):
         # --- MODIFICATION START ---
         # Look for either .mp4 or .mov, prioritizing .mp4 if both exist.
+        
         proxy_basename = Path(scene['proxy_filename']).stem
         mp4_path = proxies_dir / f"{proxy_basename}.mp4"
         mov_path = proxies_dir / f"{proxy_basename}.mov"
+        braw_path = proxies_dir / f"{proxy_basename}.braw"
 
         video_path = None
         found_format = None
@@ -88,7 +140,10 @@ def main():
         elif mov_path.exists():
             video_path = mov_path
             found_format = ".mov"
-        
+        elif braw_path.exists(): # Fixed bug: was checking mov_path again
+            video_path = braw_path
+            found_format = ".braw"
+
         print(f"({i+1}/{len(scenes)}) Processing {proxy_basename}...")
 
         if not video_path:
@@ -107,15 +162,23 @@ def main():
 
         try:
             extract_audio_segment(ffmpeg_path, str(video_path), str(audio_path))
+            fp16 = (device == "cuda")
+            result = model.transcribe(str(audio_path), fp16=fp16, word_timestamps=True)
 
-            result = model.transcribe(str(audio_path), fp16=False, word_timestamps=True)
-
+            raw_segments = result.get('segments', [])
+            
+            # --- NEW: Reassemble segments into sentences ---
+            reassembled_segments = reassemble_transcript(raw_segments)
+            
             new_scene_data = scene.copy()
-            new_scene_data['timed_transcript'] = result.get('segments', [])
-            new_scene_data['transcript'] = result.get('text', '').strip()
+            new_scene_data['timed_transcript'] = reassembled_segments
+            
+            # Join with newlines as requested: "Sentence.\nSentence?\nSentence!"
+            new_scene_data['transcript'] = "\n".join([s['text'] for s in reassembled_segments])
+
             transcribed_scenes.append(new_scene_data)
 
-            print(f"     -> OK. Found {len(new_scene_data['timed_transcript'])} timed segments.")
+            print(f"     -> OK. Condensed {len(raw_segments)} raw segments into {len(reassembled_segments)} sentences.")
         except Exception as e:
             print(f"     [!] Transcription error: {type(e).__name__}: {e}")
             new_scene_data = scene.copy()

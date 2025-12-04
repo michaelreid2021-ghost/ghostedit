@@ -99,16 +99,15 @@ DEFAULT_LEXICON = {
     ],
     "chatter": [
         "all right", "alright", "okay", "ok", "very nice", "here we go", "let's go", "yep", "yeah",
-        "mm-hmm", "uh-huh", "ready", "set", "cut", "reset", "again", "from the top", "let me retry", "do that again",
+        "mm-hmm", "uh-huh", "ready", "quiet on the set", "cut", "reset", "try again", "from the top", "let me retry", "do that again", "one more time from the top"
     ],
     "clapperboard": [
         "scene a1", "scene b1", "take one", "take two", "take 1", "take 2",
     ],
     "outro": [
-        "cut", "that's a wrap", "wrap", "we're good", "we are good", "stop", "thank you", "thanks everyone", "well done", "good job",
+        "cut", "that's a wrap", "we're good", "we are good", "thanks everyone", "well done", "good job",
     ],
     "proper_nouns": [
-        "Scott", "Paris", "Smith", "Jones", "John", "Jane", "Bass Pro", "Cabela's",
     ],
 }
 
@@ -375,29 +374,32 @@ def label_energy_band(scene_rms: np.ndarray, seg_rms_mean: float) -> str:
     return "high"
 
 
-def role_hint_from_features(text: str,
-                            energy_band: str,
-                            directness: float,
-                            voiced_frac: float,
-                            stereo_balance_abs: float,
-                            regex_groups: Dict[str, re.Pattern]) -> str:
-    t = (text or "").lower()
-    # Strong lexical cues first
-    if regex_groups["lead_in"].search(t) or regex_groups["clapperboard"].search(t):
+def role_hint_from_features(text: str, eband: str, directness: float, voiced_frac: float, stereo_balance_abs: float, regex_groups: Dict[str, re.Pattern]) -> str:
+    text_lower = text.lower()
+
+    # Director cues/chatter
+    if regex_groups["lead_in"].search(text_lower) or regex_groups["clapperboard"].search(text_lower):
         return "director_cue"
-    if regex_groups["chatter"].search(t):
+    if regex_groups["chatter"].search(text_lower) or regex_groups["outro"].search(text_lower):
         return "director_chatter"
 
-    # Audio heuristics
-    # Host: higher energy, higher directness, strongly voiced
-    if energy_band == "high" and directness > 0.6 and voiced_frac > 0.7:
+    # NEW: Prioritize as host if meaningful text present, high directness (on-mic), and not low energy (handles segments with trailing silence)
+    if text.strip() and directness > 0.6 and eband != "low":
         return "host"
 
-    # Director/off-camera: lower directness and/or lower energy, balanced stereo (room)
-    if energy_band in ("low", "medium") and directness < 0.45 and voiced_frac < 0.8:
-        return "director_like"
+    # Low energy or low voiced ~ silence or noise
+    if eband == "low" or voiced_frac < 0.3:
+        return "silence_or_noise"
 
-    # If stereo highly imbalanced, might be a boom swing or single-channel artifact; avoid over-labeling
+    # High directness and high energy ~ host on-mic
+    if directness > 0.7 and eband in ("medium", "high"):
+        return "host"
+
+    # Off-mic like (low directness, balanced stereo?)
+    if directness < 0.5:
+        return "off_mic_like"
+
+    # If high balance abs and low directness, might be a boom swing or single-channel artifact; avoid over-labeling
     if not math.isnan(stereo_balance_abs) and stereo_balance_abs < 0.15 and directness < 0.5:
         return "off_camera_like"
 
@@ -532,7 +534,7 @@ def annotate_scene(scene: Dict[str, Any],
     # Scene-level markers
     new_scene = dict(scene)
     new_scene["timed_transcript"] = new_segments
-    new_scene["energy_peak_markers"] = [{"t": round(p, 3), "type": "energy_peak"} for p in peaks]
+    #new_scene["energy_peak_markers"] = [{"t": round(p, 3), "type": "energy_peak"} for p in peaks]
 
     # Cleanup temp
     if not keep_audio:

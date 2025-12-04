@@ -48,8 +48,8 @@ def _tc_to_frames(tc: str, nominal_fps: int, drop: bool) -> int:
     frames = (hh*3600 + mm*60 + ss) * nominal_fps + ff
 
     if drop and nominal_fps in (30, 60):
-        # Drop-frame: 29.97 → 2 df per minute except every 10th minute
-        # For 59.94 → 4 df per minute except every 10th minute
+        # Drop-frame: 29.97 -> 2 df per minute except every 10th minute
+        # For 59.94 -> 4 df per minute except every 10th minute
         drop_per_min = 2 if nominal_fps == 30 else 4
         total_minutes = 60*hh + mm
         frames -= drop_per_min * (total_minutes - total_minutes // 10)
@@ -143,7 +143,7 @@ def derive_frame_locked_timing(ffp: Dict) -> Dict:
         start_frames, drift = _round_frames(frames_f)
         # sub-frame snap tolerance: <= 0.5 frame
         if drift > Fraction(1,2):
-            # Violent offset → hard fail (caller will catch).
+            # Violent offset -> hard fail (caller will catch).
             raise ValueError(f"Start drift {float(drift)} frames is too large without TMCD.")
         # else we snapped silently
 

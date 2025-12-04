@@ -22,7 +22,7 @@ A robust configuration system (`project_config.py`, `project_paths.py`) allows t
 
 ## 2. The Assembly Line Pipeline
 
-The primary mechanism for using the GhostEdit pipeline is the "Assembly Line," a series of automated stations, each with a watcher and a doer script. Here’s how a project moves through the pipeline:
+The primary mechanism for using the GhostEdit pipeline is the "Assembly Line," a series of automated stations, each with a watcher and a doer script. Here's how a project moves through the pipeline:
 
 ### Station 1: Intake and Project Setup
 *   **Watcher:** `001_intake_watcher.py`

@@ -127,6 +127,9 @@ def main():
     parser.add_argument("--project_id", type=str, default="qtow-148623", help="Your Google Cloud Project ID.")
     parser.add_argument("--location", type=str, default="global", help="The GCP location for the Vertex AI endpoint.")
     parser.add_argument("--model", type=str, default="gemini-2.5-pro", help="The Gemini model to use.")
+    parser.add_argument("--review-dir", type=Path, default=None, help="Override root directory for final review packages.")
+    parser.add_argument("--projects-root", type=Path, default=None, help="Workspace projects root (defaults to sibling 'projects').")
+    parser.add_argument("--global-lock", type=Path, help="Path to global lock file to release on success.")
     args = parser.parse_args()
     
     project_name = args.project_dir.name
@@ -135,14 +138,19 @@ def main():
     try:
         # Define paths
         assembly_line_root = args.project_dir.parent.parent
-        review_output_dir = assembly_line_root / "BROLL_REVIEW" / project_name
-        
-        source_project_dir = assembly_line_root / "projects" / project_name
+        projects_root = (args.projects_root or (assembly_line_root / "projects")).resolve()
+        review_root = (args.review_dir or (assembly_line_root / "BROLL_REVIEW")).resolve()
+        review_output_dir = review_root / project_name
+
+        logging.info("Using projects root: %s", projects_root)
+        logging.info("Review output root: %s", review_root)
+
+        source_project_dir = projects_root / project_name
         workspace = source_project_dir / "ai_working_files"
         source_fcpxml = source_project_dir / "Info.fcpxml"
         
         pacing_plan_json = workspace / "45_ai_pacing_plans/subtitle_1_changes.json"
-        broll_plan_json = workspace / "46_ai_b_roll_plans/subtitle 1_broll_plan.json"
+        broll_plan_json = workspace / "46_ai_b_roll_plans/subtitle_1_broll_plan.json"
         output_memo_md = review_output_dir / "Final_Cut_Notes_for_Editor.md"
         dest_fcpxml = review_output_dir / "Info.fcpxml"
 
@@ -206,9 +214,16 @@ def main():
         logging.info(f"Copied final FCPXML to review package.")
         
         logging.info(f"--- Final Review Doer for {project_name} Finished Successfully ---")
+        # --- RELEASE LOCK ---
+        if args.global_lock and args.global_lock.exists():
+            logging.info("Releasing Global Pipeline Lock.")
+            args.global_lock.unlink()
 
     except Exception as e:
-        logging.error(f"Final Review Doer FAILED for {project_name}. Error: {e}", exc_info=True)
+        # NOTE: We do NOT release the lock on failure. 
+        # If the project breaks here, we want the pipeline to STOP 
+        # so you can investigate before it tries to eat the next folder.
+        logging.error(f"Final Review Failed: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":

@@ -1,37 +1,58 @@
-﻿# update_angles.ps1
-# Version: 2025-09-03
-# Purpose: Apply AI pacing plan cuts into info.fcpxml (single-take, SRT-based workflow)
+param(
+    [string]$ProjectDir,
+    [string]$ProjectsRoot,
+    [string]$ProjectsFolder
+)
 
 # --- Configuration ---
-$basePath = "E:\ghostedit\assembly_line\projects\"
-$projectsFolder = "E:\ghostedit\fcpxml\pipeline\projects\"
+$scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+if (-not $ProjectsRoot)   { $ProjectsRoot = "E:\ghostedit\fcpxml\workspace\projects" }
+if (-not $ProjectsFolder) { $ProjectsFolder = "E:\ghostedit\fcpxml\pipeline\projects" }
+$projectsFolder    = $ProjectsFolder
 $activeProjectFile = Join-Path $projectsFolder "active_project.txt"
+$pythonScriptPath  = Join-Path $scriptRoot "103-reflow-and-more.py"
+
+if (-not (Test-Path $pythonScriptPath)) {
+    Write-Error "FATAL: Helper script not found at '$pythonScriptPath'."
+    exit 1
+}
 
 # --- Resolve active project ---
-try {
-    $active_project = Get-Content -Path $activeProjectFile -ErrorAction Stop
+if ($ProjectDir) {
+    try {
+        $projectRoot = (Resolve-Path -Path $ProjectDir -ErrorAction Stop).Path
+    } catch {
+        Write-Error "FATAL: Unable to resolve ProjectDir '$ProjectDir'. Error: $_"
+        exit 1
+    }
+    $active_project = Split-Path $projectRoot -Leaf
+} else {
+    try {
+        $active_project = (Get-Content -Path $activeProjectFile -ErrorAction Stop).Trim()
+    } catch {
+        Write-Error "FATAL: Could not read active project file '$activeProjectFile'. Error: $_"
+        exit 1
+    }
+    if (-not $active_project) {
+        Write-Error "FATAL: Active project file '$activeProjectFile' is empty."
+        exit 1
+    }
+    $projectRoot = Join-Path $ProjectsRoot $active_project
 }
-catch {
-    Write-Error "FATAL: Could not read active project file at '$activeProjectFile'. Error: $_"
+
+if (-not (Test-Path $projectRoot)) {
+    Write-Error "FATAL: Project root '$projectRoot' does not exist."
     exit 1
 }
 
-if ([string]::IsNullOrWhiteSpace($active_project)) {
-    Write-Error "FATAL: Active project file is empty."
-    exit 1
-}
+$workspace = Join-Path $projectRoot "ai_working_files"
+$fcpxml_current = Join-Path $projectRoot "Info.fcpxml"
+$fcpxml_temp_out = Join-Path $projectRoot "Info.temp_angles.fcpxml"
 
-$projectRoot = Join-Path $basePath $active_project
-$workspace   = Join-Path $projectRoot "ai_working_files"
-
-# --- Locate input fcpxml (ONLY info.fcpxml) ---
-$fcpxml_current = Join-Path $projectRoot "info.fcpxml"
 if (-not (Test-Path $fcpxml_current)) {
-    Write-Error "FATAL: Required info.fcpxml not found at '$fcpxml_current'."
+    Write-Error "FATAL: Required Info.fcpxml not found at '$fcpxml_current'."
     exit 1
 }
-
-$fcpxml_temp_out = Join-Path $projectRoot "temp_out.fcpxml"
 
 # --- Locate pacing plan (latest subtitle*_changes.json) ---
 $plansDir = Join-Path $workspace "45_ai_pacing_plans"
@@ -62,11 +83,11 @@ function Get-TargetAngleName {
     param($angleChoice)
     if ([string]::IsNullOrWhiteSpace($angleChoice)) { return $null }
     $ac = $angleChoice.Trim().ToLower()
-    # Use the correct names from the FCPXML
     if ($ac -eq "angle a") { return "Angle 2" }
     if ($ac -eq "angle b") { return "Angle 1" }
     return $null
 }
+
 $normalized =
     $allChanges |
     Where-Object { $_.propose_cut -eq $true } |
@@ -104,22 +125,32 @@ foreach ($chg in $normalized) {
     $cut_seconds = [double]$chg.cut_seconds
     $target_angle = $chg.target_angle_name
 
-    Write-Host "  - Applying cut at $cut_seconds s → $target_angle"
+    Write-Host "  - Applying cut at $cut_seconds s -> $target_angle"
 
-    & python 103-reflow-and-more.py `
+    & python $pythonScriptPath `
         --fcpxml $fcpxml_current `
         --out $fcpxml_temp_out `
         apply-angle-change `
         --cut-seconds $cut_seconds `
         --target-angle-name $target_angle
 
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "    - Python script failed (exit $LASTEXITCODE). Halting."
+        if (Test-Path $fcpxml_temp_out) { Remove-Item $fcpxml_temp_out -Force }
+        exit 1
+    }
+
     if (Test-Path $fcpxml_temp_out) {
+        $timestamp = Get-Date -Format "yyyyMMddHHmmss"
+        $rand = Get-Random -Minimum 1000 -Maximum 9999
+        $backupPath = Join-Path (Split-Path $fcpxml_current) "Info.bak.$timestamp_$rand.fcpxml"
+        Move-Item -Path $fcpxml_current -Destination $backupPath -Force
         Move-Item -Path $fcpxml_temp_out -Destination $fcpxml_current -Force
-        Write-Host "    - Edit applied."
+        Write-Host "    - Edit applied. Backup: $backupPath"
     } else {
-        Write-Error "    - Python script failed. Aborting this plan."
-        break
+        Write-Error "    - Expected temp file '$fcpxml_temp_out' was not created. Halting."
+        exit 1
     }
 }
 
-Write-Host "`n[+] All angle changes applied successfully." -ForegroundColor Green
+Write-Host "`n[+] All angle changes applied successfully."

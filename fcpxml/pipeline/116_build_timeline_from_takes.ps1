@@ -6,10 +6,11 @@
 #   multicam placeholder from the timeline, ensuring no empty clips remain.
 
 # --- Configuration ---
-$basePath = "E:\ghostedit\assembly_line\projects\"
+$basePath = "E:\ghostedit\fcpxml\workspace\projects\"
 $projectsFolder = "E:\ghostedit\fcpxml\pipeline\projects\"
 $activeProjectFile = Join-Path $projectsFolder "active_project.txt"
-$builderScriptPath = ".\115_timeline_builder.py"
+$builderScriptPath = ".\115a_alt_clipper.py"
+#$builderScriptPath = ".\115_timeline_builder.py"
 # +++ ADD THIS +++
 $redactorScriptPath = ".\215_timeline_redactor.py" 
 # ++++++++++++++++
@@ -99,8 +100,8 @@ foreach ($scene in $markupData) {
         $take = $finalTakes[$i]
         $takeCounter = $i + 1
         
-        $start = [Math]::Max(0, ($take.start_seconds - 0.5))
-        $duration = ($take.end_seconds - $start) + 0.5
+        $start = [Math]::Max(0, ($take.start_seconds - 0.7))
+        $duration = ($take.end_seconds - $start) + 0.7
         $subclipName = "$($sourceMediaName) - Subclip $($takeCounter)".Trim()
 
         Write-Host " -> Processing Take #$($takeCounter) ('$subclipName')"

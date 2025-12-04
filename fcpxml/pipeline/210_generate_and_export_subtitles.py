@@ -225,7 +225,7 @@ def main():
     else:
         sys.exit("Error: Failed to export SRT from subtitle items.")
 
-    print("--- Done ---")
+    print("--- Done ---") 
 
 
 if __name__ == "__main__":

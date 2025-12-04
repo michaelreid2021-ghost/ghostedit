@@ -1,45 +1,24 @@
 #!/usr/bin/env python3
 # 103_reflow_and_more.py
-# v2.0.0 (2025-08-28)
+# v2.2.0 (2025-11-21)
 # Purpose: Apply a SINGLE angle change to an FCPXML built by the clean-takes pipeline.
-#          This script is intentionally narrow and deterministic:
-#          - Consumes a remapped cut time (timeline seconds) and a target angle (by name or index).
-#          - Locates the containing <mc-clip> by absolute timeline containment [offset, offset+duration).
-#          - Splits that <mc-clip> at the cut time into LEFT and RIGHT siblings.
-#          - Preserves transforms and attributes; LEFT keeps current angle, RIGHT switches to target angleID.
-#          - Updates RIGHT 'offset' and 'duration' as well as 'start' (source time) by +delta frames.
-#          - Leaves unrelated <asset-clip> overlays intact (no cleverness).
-#          - Aborts with a full diagnostic report if anything is inconsistent.
+#
+# Changes in v2.2.0:
+# - Improved "Split Source" compatibility:
+#   When changing angles, it specifically looks for mc-source with srcEnable="video" OR srcEnable="all".
+#   It does NOT blindly overwrite or recreate sources. This preserves "audio" sources if 108_layer_multicam_audio
+#   has already run.
 #
 # Header Notes:
 # - Compatible with timelines produced by 115_timeline_builder.py.
-# - Do NOT key off legacy names/IDs. Resolve targets by time containment and current angleID map.
 # - Input clock must be remapped (timeline seconds), e.g., from 119_remap_angle_changes.py output.
-#
-# CLI Examples:
-#   # Direct params (preferred when wrapper already picked the change):
-#   python 103_reflow_and_more.py \
-#       --fcpxml "E:\davinci\projects\frizell\Info.fcpxml" \
-#       --out    "E:\davinci\projects\frizell\output.fcpxml" \
-#       apply-angle-change \
-#       --cut-seconds 183656.251 \
-#       --target-angle-name "Angle 2"
-#
-#   # Or from a single-change JSON blob (must contain 'remapped_cut_time' and one of 'target_angle_name'|'target_angle_index'):
-#   python 103_reflow_and_more.py \
-#       --fcpxml "E:\davinci\projects\frizell\Info.fcpxml" \
-#       --out    "E:\davinci\projects\frizell\output.fcpxml" \
-#       apply-angle-change \
-#       --change-json "E:\davinci\projects\frizell\ai_working_files\45_ai_pacing_plans\take_04_change_0001_remapped.json"
-#
-# Footer / Changelog:
-# - v2.0.0 (2025-08-28): First "smart 103" refactor: deterministic single-cut application using time containment and live angleID discovery.
 
 import argparse
 import copy
 import json
 import sys
 import xml.etree.ElementTree as ET
+from datetime import datetime
 from fractions import Fraction
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -165,27 +144,28 @@ def build_angle_map(media_el: ET.Element) -> Tuple[Dict[str, str], List[str]]:
             name_to_id[nm] = aid
     return name_to_id, order
 
-def get_current_angle_id(mc_clip_el: ET.Element) -> str:
-    mc_source = mc_clip_el.find('mc-source')
-    if mc_source is None:
-        return ""
-    return mc_source.get('angleID', "") or ""
-
-def ensure_mc_source(el: ET.Element) -> ET.Element:
-    mc_source = el.find('mc-source')
-    if mc_source is None:
-        mc_source = ET.SubElement(el, 'mc-source', {'angleID': '', 'srcEnable': 'all'})
-        ET.SubElement(mc_source, 'adjust-transform', {'scale': '1 1', 'position': '0 0', 'anchor': '0 0'})
+def get_video_source_element(mc_clip_el: ET.Element) -> ET.Element:
+    """
+    Smart finder for the mc-source responsible for video.
+    Priority: srcEnable='video', then srcEnable='all', then first found.
+    """
+    # 1. Explicit video
+    vid = mc_clip_el.find("mc-source[@srcEnable='video']")
+    if vid is not None: return vid
+    
+    # 2. Combined all (standard default)
+    all_src = mc_clip_el.find("mc-source[@srcEnable='all']")
+    if all_src is not None: return all_src
+    
+    # 3. Fallback: create default 'all' if missing completely
+    mc_source = ET.SubElement(mc_clip_el, 'mc-source', {'angleID': '', 'srcEnable': 'all'})
+    ET.SubElement(mc_source, 'adjust-transform', {'scale': '1 1', 'position': '0 0', 'anchor': '0 0'})
     return mc_source
 
-def deep_copy_mc_source(src_mc_clip: ET.Element) -> ET.Element:
-    src = src_mc_clip.find('mc-source')
-    if src is None:
-        # synthesize a default empty one; caller may set angleID later
-        mc_source = ET.Element('mc-source', {'angleID': '', 'srcEnable': 'all'})
-        ET.SubElement(mc_source, 'adjust-transform', {'scale': '1 1', 'position': '0 0', 'anchor': '0 0'})
-        return mc_source
-    return copy.deepcopy(src)
+def get_current_angle_id(mc_clip_el: ET.Element) -> str:
+    # Use the smart finder
+    src = get_video_source_element(mc_clip_el)
+    return src.get('angleID', "") or ""
 
 # ---------------------------
 # Core operation
@@ -200,7 +180,7 @@ def apply_single_angle_change(
 ) -> None:
     """
     Split the containing mc-clip at the given absolute timeline seconds and
-    set the RIGHT segment's mc-source.angleID to the target.
+    set the RIGHT segment's video mc-source.angleID to the target.
     """
     # Load XML and timeline info
     tree, root, resources, seq = load_fcpxml(fcpxml_in)
@@ -253,9 +233,40 @@ def apply_single_angle_change(
     # Compute delta in mc-domain frames and validate split feasibility
     delta_frames = compute_mc_domain_delta_frames(mc_el, cut_frames, tb_num, tb_den)
     if delta_frames <= 0 or delta_frames >= containing_sc.dfr:
-        # Degenerate split; treat as no-op with diagnostics
+        # Degenerate split; treat as no-op with diagnostics and review.log entry
         diag = dump_mc_clip_diag(mc_el, tb_num, tb_den, cut_seconds, cut_frames, delta_frames)
-        raise RuntimeError(json.dumps({"error": "Cut lies at or outside clip boundaries (degenerate split).", **diag}, indent=2))
+
+        project_dir = Path(fcpxml_out).resolve().parent
+        project_name = project_dir.name
+
+        record: Dict[str, Any] = {
+            "status": "skipped_degenerate",
+            "reason": "Cut lies at or outside clip boundaries (degenerate split).",
+            "fcpxml_in": str(Path(fcpxml_in)),
+            "fcpxml_out": str(Path(fcpxml_out)),
+            "project": project_name,
+            "target_angle_name": target_angle_name,
+            "target_angle_index": target_angle_index,
+            "current_angle_id": current_angle_id,
+            "target_angle_id": target_angle_id,
+            "timestamp_utc": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+        }
+        record.update(diag)
+
+        # Write timeline unchanged to output path
+        pretty_write_xml(tree, fcpxml_out)
+
+        # Append review record
+        review_log_path = project_dir / "review.log"
+        try:
+            with review_log_path.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(record) + "\n")
+        except Exception:
+            pass
+
+        # Emit diagnostics to stdout and exit gracefully
+        print(json.dumps(record, indent=2))
+        return
 
     # Prepare LEFT and RIGHT mc-clip elements
     left_el = mc_el
@@ -281,17 +292,16 @@ def apply_single_angle_change(
     right_el.set('start', frames_to_fcpx_frac(right_start_frames, tb_num, tb_den))
 
     # RIGHT mc-source must switch to target angle
-    right_mc_source = ensure_mc_source(right_el)
+    # V2.2.0 CHANGE: Find the specific video source to modify instead of wiping/creating generic
+    right_mc_source = get_video_source_element(right_el)
     right_mc_source.set('angleID', target_angle_id)
-    right_mc_source.set('srcEnable', 'all')
+    # Important: Do NOT force srcEnable to 'all' here if it was 'video'. Keep it as is.
+    # But if it was newly created by get_video_source_element (rare), it defaults to 'all'.
 
-    # LEFT mc-source remains as-is; ensure it at least exists
-    ensure_mc_source(left_el)
+    # LEFT mc-source remains as-is
 
     # Insert RIGHT after LEFT in spine
-    # We must compute the actual index in spine children list to insert correctly among mixed nodes.
     spine_children = list(spine)
-    # Find actual index of mc_el among spine children
     actual_index = None
     for i, child in enumerate(spine_children):
         if child is mc_el:
@@ -439,7 +449,7 @@ def main():
             target_angle_index=target_angle_index,
         )
     except Exception as e:
-        # Hard abort with detailed context (no skipping)
+        # Hard abort with detailed context for genuine errors.
         msg = str(e)
         # If already JSON-ish, pass through; otherwise wrap
         try:

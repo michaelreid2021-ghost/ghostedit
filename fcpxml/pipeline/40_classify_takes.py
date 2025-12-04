@@ -62,9 +62,11 @@ class GeminiClient:
 
 def parse_take_from_filename(filename: str) -> str | None:
     """Extracts the take number (e.g., '02') from the filename."""
-    match = re.search(r"(\d+)\.(mp4|mov|braw)$", filename, re.IGNORECASE)
+#-  match = re.search(r"(\d+)\.(mp4|mov|braw)$", filename, re.IGNORECASE)
+    # This new pattern looks for a space or underscore, captures the digits,
+    # and allows for other characters (like _HD) before the file extension.
+    match = re.search(r"[\s_](\d+)[^\.]*\.(?:mp4|mov|braw)$", filename, re.IGNORECASE)
     return match.group(1).zfill(2) if match else None
-
 
 def build_system_prompt() -> str:
     styles = (
@@ -73,7 +75,7 @@ def build_system_prompt() -> str:
         "Documentary-Host, Coaching-Dialogue, NOVEL"
     )
     purposes = (
-        "Hook (opener/cold-open); Introduction (who/what/why); Roadmap (we'll cover…); "
+        "Hook (opener/cold-open); Introduction (who/what/why); Roadmap (we'll cover...); "
         "Disclaimer (legal/safety/sponsorship/scope note); "
         "Problem Statement (pain/need); Objection/Anxiety (e.g., 'I'm too old/too late'); "
         "Reframe/Encouragement (e.g., 'you're right on time'); "
@@ -89,9 +91,9 @@ def build_system_prompt() -> str:
         "- Use an industry lexicon of segment purposes. A segment may be omitted if absent; never force categories. "
         f"Preferred purposes (aliases allowed): {purposes}.\n"
         "- Detect topic boundaries. Mark natural topic changes (title + one-sentence rationale). Do not over-segment; "
-        "3–7 boundaries max per take.\n"
+        "3-7 boundaries max per take.\n"
         "- If script implies multiple parts/episodes, mark series context (e.g., 'Series context: yes; part: 1 of N (unknown)').\n"
-        "- Be selective. If a purpose isn’t present, exclude it. If a style doesn’t fit, return NOVEL.\n"
+        "- Be selective. If a purpose isn't present, exclude it. If a style doesn't fit, return NOVEL.\n"
         "- No hallucinations. Only use content present in the transcripts; do not invent quotes or takes.\n"
         "Finally, produce the final paper edit sequence."
     )
@@ -104,10 +106,10 @@ def build_user_prompt_header() -> str:
         "1) First, output a one-line message style label for the overall piece.\n"
         "2) For each take, list only the purposes that actually appear (use the provided lexicon; omit if absent).\n"
         "3) Mark topic boundaries in each take (up to 7) with a short title and why it changes.\n"
-        "4) If multiple-part language appears (e.g., 'Next time we’ll…'), note Series context.\n"
-        "5) Then produce the final video_sequence choosing the minimal, strongest set of parts; it’s OK to omit categories.\n"
+        "4) If multiple-part language appears (e.g., 'Next time we'll...'), note Series context.\n"
+        "5) Then produce the final video_sequence choosing the minimal, strongest set of parts; it's OK to omit categories.\n"
         "6) For each item in video_sequence, also include optional fields: "
-        "'anchor_quote' (5–12 exact words from the take) and 'why' (one-sentence rationale). "
+        "'anchor_quote' (5-12 exact words from the take) and 'why' (one-sentence rationale). "
         "Avoid two identical segment_type values in a row; if the second is procedural, use 'How-To/Lesson'.\n\n"
     )
 
@@ -179,7 +181,7 @@ def build_response_schema() -> dict:
                         },
                         "anchor_quote": {
                             "type": "STRING",
-                            "description": "Optional: 5–12 exact words pulled from the chosen take."
+                            "description": "Optional: 5-12 exact words pulled from the chosen take."
                         },
                         "why": {
                             "type": "STRING",
@@ -194,13 +196,14 @@ def build_response_schema() -> dict:
     }
 
 
-# --- MAIN ORCHESTRATION for Paper Edit Generation ---
+# --- MAIN ORCHESTATION for Paper Edit Generation ---
 def main(cfg):
+    print("Program Loaded - No Import Errors")
     p = from_args(cfg)
     script_name = Path(__file__).stem
     success_flag = p.workspace / f"{script_name}.success"
     fail_flag = p.workspace / f"{script_name}.fail"
-
+    
     if success_flag.exists():
         print(f"[+] Script {script_name} has already run successfully. Skipping.")
         return
@@ -238,8 +241,28 @@ def main(cfg):
         for take_number, transcript in sorted(transcripts_by_take.items(), key=lambda kv: kv[0]):
             consolidated_prompt += f"--- TAKE {take_number} TRANSCRIPT ---\n{transcript}\n\n"
 
+        
         # 3) Define output schema (extended)
         paper_edit_schema = build_response_schema()
+
+#-      # --- START: Added Debug Logging ---
+#-      debug_prompt_path = p.working_root / "40_debug_prompt_sent_to_api.txt"
+#-      try:
+#-          debug_prompt_path.write_text(consolidated_prompt, encoding="utf-8")
+#-          print(f"[i] DEBUG: Full prompt saved to -> {debug_prompt_path}")
+#-      except Exception as e:
+#-          print(f"[!] WARNING: Could not write debug prompt file: {e}")
+#-      # --- END: Added Debug Logging ---
+
+        # --- START: Console Output of Full Prompt ---
+        print("\n" + "="*80)
+        print("--- PROMPT BEING SENT TO GEMINI API (CONSOLE OUTPUT) ---")
+        print(system_prompt)
+        print("-------------")
+        print(consolidated_prompt)
+        print("--- END OF PROMPT ---")
+        print("="*80 + "\n")
+        # --- END: Console Output of Full Prompt ---
 
         print("[i] Sending all transcripts to AI for high-level analysis...")
 

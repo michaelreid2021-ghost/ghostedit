@@ -75,7 +75,11 @@ class ProjectPaths:
     @property
     def temp_audio(self) -> Path:
         return self.working_root / "temp_audio"
-
+    
+    @property
+    def clean_takes_file(self) -> Path:
+        return self.working_root / "44_producers_markup.json"
+    
     @property
     def plans_dir(self) -> Path:
         return self.working_root / "45_ai_pacing_plans"

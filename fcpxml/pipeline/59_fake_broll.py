@@ -1,24 +1,31 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # 59_generate_broll_placeholders.py
-# Version: 2.2.0 (Automatic Text Wrapping)
-# Last Modified: 2025-09-16
+# Version: 2.3.0 (B-Roll Smoothing)
+# Last Modified: 2025-10-07
 #
 # Purpose:
 #   Reads B-roll plans and generates professional placeholder video clips using FFmpeg.
 #   This version renders the prompt and reasoning as separate, formatted text blocks
 #   and now includes automatic text wrapping to prevent overflow.
+#   NEW: Smooths gaps between close b-roll items (< 3s) by extending durations to abut the next.
+#        Updates JSON in-place after successful generation (backs up original to pre-smooth-broll.json).
 
 import argparse
 import json
 import os
 import subprocess
 import tempfile
-import textwrap # <-- NEW: Import textwrap module
+import textwrap
 from pathlib import Path
-from typing import Tuple
+from typing import Tuple, List, Dict
 
 from project_paths import add_base_arg, from_args
+
+# -------------------------------
+# Configuration
+# -------------------------------
+GAP_THRESHOLD = 3.0  # Internal threshold for smoothing gaps (seconds)
 
 # -------------------------------
 # Helpers
@@ -37,6 +44,55 @@ def parse_size(size_str: str) -> Tuple[int, int]:
         return w, h
     except ValueError:
         raise ValueError("Resolution must be in 'WIDTHxHEIGHT' format (e.g., 1920x1080)")
+
+def smooth_broll_durations(items: List[Dict]) -> List[Dict]:
+    if len(items) < 2:
+        return items
+    
+    items.sort(key=lambda x: x.get("timestamp_start", 0))  # Ensure sort
+    
+    # Main pass: Extend <3s gaps
+    for i in range(len(items) - 1):
+        current = items[i]
+        next_item = items[i + 1]
+        
+        current_end = current.get("timestamp_start", 0) + current.get("duration_seconds", 0)
+        next_start = next_item.get("timestamp_start", 0)
+        gap = next_start - current_end
+        
+        if 0 < gap < GAP_THRESHOLD:
+            new_duration = next_start - current.get("timestamp_start", 0)
+            current["duration_seconds"] = round(new_duration, 3)  # Round for stability
+            print(f"   -> Smoothed: Extended item {i+1} duration to {new_duration:.3f}s (gap was {gap:.3f}s)")
+    
+    # Guard pass: Force tiny residuals <0.5s (catches float misses)
+    for i in range(len(items) - 1):
+        current = items[i]
+        next_item = items[i + 1]
+        
+        current_end = current.get("timestamp_start", 0) + current.get("duration_seconds", 0)
+        next_start = next_item.get("timestamp_start", 0)
+        gap = next_start - current_end
+        
+        if 0 < abs(gap) < 0.5:  # Tiny positive or negative (overlap fix)
+            if gap > 0:
+                new_duration = next_start - current.get("timestamp_start", 0)
+                current["duration_seconds"] = round(new_duration, 3)
+                print(f"   -> Guard: Closed tiny gap {gap:.3f}s on item {i+1}")
+            else:  # Overlap: Trim current to avoid conflict
+                new_duration = next_start - current.get("timestamp_start", 0)
+                current["duration_seconds"] = round(new_duration, 3)
+                print(f"   -> Guard: Trimmed overlap {-gap:.3f}s on item {i+1}")
+    
+    # Final: Quantize all durs to 23.976 frames (ensures frame-abut in FFmpeg/Resolve)
+    frame_dur = 1001 / 24000.0  # ~0.0417s
+    for item in items:
+        dur = item.get("duration_seconds", 0)
+        quantized_dur = round(dur / frame_dur) * frame_dur
+        item["duration_seconds"] = round(quantized_dur, 3)
+        print(f"   -> Quantized dur for item to {quantized_dur:.3f}s")
+    
+    return items
 
 # -------------------------------
 # FFmpeg Filter Construction
@@ -74,30 +130,24 @@ def generate_placeholder_clip(output_path: Path, item: dict, args: argparse.Name
     reasoning = item.get("reasoning", "No reasoning provided.")
     item_type = item.get("type", "b-roll")
     
-    # --- NEW: Automatic Text Wrapping Logic ---
+    # Automatic Text Wrapping Logic
     width, _ = parse_size(args.resolution)
-    # Calculate available width in pixels, considering margins
     available_width_px = width * (1.0 - (args.margin_x * 2))
 
-    # Estimate character width as ~55% of font size (a good heuristic for proportional fonts like Arial)
     sug_char_width_px = args.fontsize_suggestion * 0.55
     rsn_char_width_px = args.fontsize_reasoning * 0.55
 
-    # Calculate max characters per line
     sug_chars_per_line = int(available_width_px / sug_char_width_px)
     rsn_chars_per_line = int(available_width_px / rsn_char_width_px)
     
-    # Wrap the text using the calculated widths
     wrapped_prompt = textwrap.fill(prompt, width=sug_chars_per_line)
     wrapped_reasoning = textwrap.fill(reasoning, width=rsn_chars_per_line)
-    # --- END NEW LOGIC ---
 
     header = f"TYPE: {item_type.upper()} | DURATION: {duration:.2f}s"
     suggestion_text = f"{header}\n\nPROMPT:\n{wrapped_prompt}"
     reasoning_text = f"REASONING:\n{wrapped_reasoning}"
 
     try:
-        # Use temporary files to handle multi-line text and special characters safely
         with tempfile.NamedTemporaryFile(mode='w+', suffix='.txt', delete=False, encoding='utf-8') as sug_file, \
              tempfile.NamedTemporaryFile(mode='w+', suffix='.txt', delete=False, encoding='utf-8') as rsn_file:
             
@@ -106,7 +156,6 @@ def generate_placeholder_clip(output_path: Path, item: dict, args: argparse.Name
             sug_file_path = Path(sug_file.name)
             rsn_file_path = Path(rsn_file.name)
 
-        # Generate the complex filter string
         filter_str = make_drawtext_filters(args.font_path, sug_file_path, rsn_file_path, args)
         
         command = [
@@ -123,12 +172,49 @@ def generate_placeholder_clip(output_path: Path, item: dict, args: argparse.Name
         exit(1)
     except subprocess.CalledProcessError as e:
         print(f"\n[!] FFmpeg failed for: {output_path.name}\n    FFmpeg stderr:\n{e.stderr}")
+        raise  # Re-raise to halt on error
     finally:
-        # Ensure temporary files are cleaned up
         if 'sug_file_path' in locals() and sug_file_path.exists():
             sug_file_path.unlink()
         if 'rsn_file_path' in locals() and rsn_file_path.exists():
             rsn_file_path.unlink()
+
+# -------------------------------
+# JSON Update and Backup
+# -------------------------------
+def update_json_with_smoothing(plan_path: Path, smoothed_items: List[Dict]) -> bool:
+    """Updates the JSON with smoothed durations, backs up original, and replaces if successful."""
+    try:
+        # Read original
+        with open(plan_path, 'r', encoding='utf-8') as f:
+            plan = json.load(f)
+        
+        # Update b_roll_plan
+        plan['b_roll_plan'] = smoothed_items
+        
+        # Temp file
+        temp_path = plan_path.with_suffix('.tmp.json')
+        with open(temp_path, 'w', encoding='utf-8') as f:
+            json.dump(plan, f, indent=2, ensure_ascii=False)
+        
+        # Backup original
+        backup_path = plan_path.with_name(f"{plan_path.stem}_pre-smooth-broll.json")
+        plan_path.rename(backup_path)
+        
+        # Promote temp
+        temp_path.rename(plan_path)
+        
+        print(f"   -> JSON updated: {plan_path.name} (backup: {backup_path.name})")
+        return True
+        
+    except Exception as e:
+        print(f"   [!] Failed to update JSON: {e}")
+        # Restore original if temp exists (but since we renamed, need to handle carefully)
+        if temp_path.exists():
+            temp_path.unlink()
+        if backup_path.exists():
+            backup_path.rename(plan_path)
+        return False
 
 # -------------------------------
 # Main
@@ -152,6 +238,7 @@ def main(cfg):
         return
 
     total_generated = 0
+    json_updated = True  # Track if all JSON updates succeed
     for plan_path in plans:
         print(f"\n[+] Processing plan: {plan_path.name}")
         plan = json.loads(plan_path.read_text(encoding="utf-8"))
@@ -161,7 +248,12 @@ def main(cfg):
             print("   -> No b_roll_plan entries; skipping.")
             continue
 
-        for i, item in enumerate(items):
+        # Smooth durations
+        smoothed_items = smooth_broll_durations(items.copy())  # Copy to avoid mutating original yet
+
+        # Generate placeholders with smoothed durations
+        success = True
+        for i, item in enumerate(smoothed_items):
             timestamp = float(item.get("timestamp_start", i))
             out_name = f"{base_name}_placeholder_{timestamp:.2f}s.mp4"
             out_path = output_dir / out_name
@@ -171,8 +263,26 @@ def main(cfg):
                 continue
 
             print(f" -> Generating: {out_name} ({float(item.get('duration_seconds', 0)):.2f}s)")
-            generate_placeholder_clip(out_path, item, cfg)
-            total_generated += 1
+            try:
+                generate_placeholder_clip(out_path, item, cfg)
+                total_generated += 1
+            except Exception:
+                success = False
+                break
+
+        if success:
+            # Update JSON
+            if not update_json_with_smoothing(plan_path, smoothed_items):
+                json_updated = False
+                success = False
+
+        if not success:
+            print(f"   [!] Failed to process plan '{plan_path.name}'. Skipping JSON update.")
+        else:
+            print(f"   -> Plan processed successfully.")
+
+    if not json_updated:
+        print("\n[!] Some JSON updates failed; originals preserved where possible.")
 
     print(f"\n[+] Success. Generated {total_generated} placeholder video(s).")
 
@@ -201,7 +311,7 @@ if __name__ == "__main__":
     parser.add_argument("--center-text", action="store_true", help="Center text horizontally; otherwise, left-align with margin.")
 
     # Positioning parameters
-    parser.add_argument("--margin-x", type=float, default=0.05, help="Left margin as a percentage of video width (e.g., 0.05 for 5%%).")
+    parser.add_argument("--margin-x", type=float, default=0.05, help="Left margin as a percentage of video width (e.g., 0.05 for 5%).")
     parser.add_argument("--sug-top-percent", type=float, default=0.1, help="Suggestion text block top position (percentage of height).")
     parser.add_argument("--rsn-top-percent", type=float, default=0.6, help="Reasoning text block top position (percentage of height).")
 
